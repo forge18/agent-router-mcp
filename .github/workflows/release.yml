@@ -70,7 +70,7 @@ jobs:
             asset_name: agent-router-mcp-windows-x86_64.exe
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
