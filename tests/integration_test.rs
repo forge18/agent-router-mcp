@@ -40,15 +40,22 @@ async fn test_get_routing_validates_input() {
     // Test with invalid input (prompt too long)
     let invalid_params = CallToolRequestParams {
         name: "get_routing".to_string(),
-        arguments: Some(json!({
-            "user_prompt": "a".repeat(10001), // Exceeds max length
-            "trigger": "user_request"
-        }).as_object().unwrap().clone()),
+        arguments: Some(
+            json!({
+                "user_prompt": "a".repeat(10001), // Exceeds max length
+                "trigger": "user_request"
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        ),
         meta: None,
         task: None,
     };
 
-    let result = handler.handle_call_tool_request(invalid_params, runtime).await;
+    let result = handler
+        .handle_call_tool_request(invalid_params, runtime)
+        .await;
     assert!(result.is_err());
 }
 
@@ -59,15 +66,20 @@ async fn test_get_routing_with_valid_input() {
 
     let params = CallToolRequestParams {
         name: "get_routing".to_string(),
-        arguments: Some(json!({
-            "user_prompt": "Fix the authentication bug",
-            "trigger": "user_request",
-            "git_context": {
-                "branch": "main",
-                "changed_files": ["src/auth.ts"],
-                "staged_files": []
-            }
-        }).as_object().unwrap().clone()),
+        arguments: Some(
+            json!({
+                "user_prompt": "Fix the authentication bug",
+                "trigger": "user_request",
+                "git_context": {
+                    "branch": "main",
+                    "changed_files": ["src/auth.ts"],
+                    "staged_files": []
+                }
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        ),
         meta: None,
         task: None,
     };
@@ -230,12 +242,7 @@ fn create_mock_runtime() -> Arc<dyn rust_mcp_sdk::McpServer> {
         fn task_store(
             &self,
         ) -> Option<
-            Arc<
-                dyn rust_mcp_sdk::task_store::TaskStore<
-                    ClientJsonrpcRequest,
-                    ResultFromServer,
-                >,
-            >,
+            Arc<dyn rust_mcp_sdk::task_store::TaskStore<ClientJsonrpcRequest, ResultFromServer>>,
         > {
             None
         }
@@ -243,12 +250,7 @@ fn create_mock_runtime() -> Arc<dyn rust_mcp_sdk::McpServer> {
         fn client_task_store(
             &self,
         ) -> Option<
-            Arc<
-                dyn rust_mcp_sdk::task_store::TaskStore<
-                    ServerJsonrpcRequest,
-                    ResultFromClient,
-                >,
-            >,
+            Arc<dyn rust_mcp_sdk::task_store::TaskStore<ServerJsonrpcRequest, ResultFromClient>>,
         > {
             None
         }
