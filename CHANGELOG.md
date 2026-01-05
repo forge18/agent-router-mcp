@@ -10,12 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.2] - 2026-01-05
 
 ### Added
-- Windows ARM64 binary support (`aarch64-pc-windows-gnullvm`)
 - Comprehensive integration test suite with 7 test cases
 - Thread-safe lazy initialization using `OnceCell` for classifier
 - Regex pattern caching for improved performance
 - Config file validation (checks for empty configs, duplicates, invalid rules)
 - Config archives in releases (`.zip` for Windows, `.tar.gz` for macOS/Linux)
+- Windows ARM64 binary support (MSVC in CI releases, gnullvm for local builds)
 - Comprehensive documentation for `classify()` function
 - Table of contents in README for better navigation
 
