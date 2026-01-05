@@ -74,19 +74,6 @@ impl ModelManager {
         Ok(())
     }
 
-    pub async fn initialize_silent(&mut self) -> Result<()> {
-        if !self.check_ollama_running().await? {
-            anyhow::bail!("Ollama is not running");
-        }
-
-        if !self.check_model_exists().await? {
-            anyhow::bail!("Model '{}' not found", self.config.model_name);
-        }
-
-        info!("Model manager initialized (silent mode)");
-        Ok(())
-    }
-
     /// Step 1: LLM identifies semantic tags
     pub async fn identify_tags(
         &self,
@@ -265,20 +252,6 @@ impl ModelManager {
         }
     }
 
-    pub async fn wait_for_ollama(&self, timeout_secs: u64) -> Result<()> {
-        let start = std::time::Instant::now();
-
-        while start.elapsed().as_secs() < timeout_secs {
-            if self.check_ollama_running().await? {
-                info!("Ollama is ready");
-                return Ok(());
-            }
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-
-        anyhow::bail!("Ollama failed to start within {} seconds", timeout_secs)
-    }
-
     pub async fn pull_model(&self, model_name: &str) -> Result<()> {
         info!(
             "Pulling model {}... (this may take a few minutes)",
@@ -451,7 +424,6 @@ mod tests {
         Config {
             model_name: "qwen2.5-coder:7b".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
-            auto_start_ollama: false,
         }
     }
 

@@ -116,11 +116,6 @@ pub struct AgentDefinition {
 pub struct Config {
     pub ollama_url: String,
     pub model_name: String,
-    #[deprecated(
-        since = "0.1.0",
-        note = "Auto-start is disabled for security. This field is ignored."
-    )]
-    pub auto_start_ollama: bool,
 }
 
 impl Default for Config {
@@ -131,20 +126,9 @@ impl Default for Config {
         // Security: Validate that Ollama URL is localhost
         Self::validate_ollama_url(&ollama_url);
 
-        let auto_start = std::env::var("AUTO_START_OLLAMA")
-            .map(|v| v == "true")
-            .unwrap_or(false);
-
-        if auto_start {
-            eprintln!("⚠️  WARNING: AUTO_START_OLLAMA is deprecated and ignored for security.");
-            eprintln!("   Please start Ollama manually: ollama serve");
-        }
-
         Self {
             ollama_url,
             model_name: std::env::var("MODEL_NAME").unwrap_or_else(|_| "smollm3:3b".to_string()),
-            #[allow(deprecated)]
-            auto_start_ollama: false, // Always false for security
         }
     }
 }

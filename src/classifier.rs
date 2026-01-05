@@ -5,7 +5,7 @@ use anyhow::Result;
 use tracing::info;
 
 pub struct Classifier {
-    model_manager: ModelManager,
+    pub model_manager: ModelManager,
 }
 
 impl Classifier {
@@ -16,10 +16,6 @@ impl Classifier {
 
     pub async fn initialize(&mut self) -> Result<()> {
         self.model_manager.initialize().await
-    }
-
-    pub async fn initialize_silent(&mut self) -> Result<()> {
-        self.model_manager.initialize_silent().await
     }
 
     pub async fn classify(&self, input: &ClassificationInput) -> Result<ClassificationResult> {
@@ -104,7 +100,7 @@ impl Classifier {
         })
     }
 
-    fn load_user_config(&self, input: &ClassificationInput) -> Result<UserConfig> {
+    pub fn load_user_config(&self, input: &ClassificationInput) -> Result<UserConfig> {
         // Priority: 1. Input parameter, 2. Environment variable, 3. Default
         if let Some(path) = &input.agent_config_path {
             info!("Loading agent config from input: {}", path);
@@ -118,7 +114,7 @@ impl Classifier {
         }
     }
 
-    fn load_tag_config(&self, input: &ClassificationInput) -> Result<LlmTagConfig> {
+    pub fn load_tag_config(&self, input: &ClassificationInput) -> Result<LlmTagConfig> {
         // Priority: 1. Input parameter, 2. Environment variable, 3. Default
         if let Some(path) = &input.llm_tags_path {
             info!("Loading LLM tag config from input: {}", path);
