@@ -24,7 +24,8 @@ impl Classifier {
 
     pub async fn classify(&self, input: &ClassificationInput) -> Result<ClassificationResult> {
         // Security: Validate input before processing
-        input.validate()
+        input
+            .validate()
             .map_err(|e| anyhow::anyhow!("Input validation failed: {}", e))?;
 
         // Load configs (stateless - loads fresh each time)
@@ -36,7 +37,10 @@ impl Classifier {
         let rule_based_agents = rules::apply_rules(input, &rules_config);
 
         if !rule_based_agents.is_empty() && self.is_high_confidence(&rule_based_agents, input) {
-            info!("Using rule-based classification: {} agents", rule_based_agents.len());
+            info!(
+                "Using rule-based classification: {} agents",
+                rule_based_agents.len()
+            );
             return Ok(ClassificationResult {
                 agents: rule_based_agents
                     .into_iter()
@@ -201,7 +205,11 @@ mod tests {
             };
 
             let agents = vec!["test-agent".to_string()];
-            assert!(classifier.is_high_confidence(&agents, &input), "Failed for trigger: {}", trigger);
+            assert!(
+                classifier.is_high_confidence(&agents, &input),
+                "Failed for trigger: {}",
+                trigger
+            );
         }
     }
 

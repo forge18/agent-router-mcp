@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 // Security: Maximum input sizes to prevent DoS
-const MAX_PROMPT_LENGTH: usize = 10_000;  // 10KB
+const MAX_PROMPT_LENGTH: usize = 10_000; // 10KB
 const MAX_FILES_COUNT: usize = 100;
 const MAX_FILE_PATH_LENGTH: usize = 1_000;
 
@@ -116,14 +116,17 @@ pub struct AgentDefinition {
 pub struct Config {
     pub ollama_url: String,
     pub model_name: String,
-    #[deprecated(since = "0.1.0", note = "Auto-start is disabled for security. This field is ignored.")]
+    #[deprecated(
+        since = "0.1.0",
+        note = "Auto-start is disabled for security. This field is ignored."
+    )]
     pub auto_start_ollama: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        let ollama_url = std::env::var("OLLAMA_URL")
-            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let ollama_url =
+            std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
         // Security: Validate that Ollama URL is localhost
         Self::validate_ollama_url(&ollama_url);
@@ -139,10 +142,9 @@ impl Default for Config {
 
         Self {
             ollama_url,
-            model_name: std::env::var("MODEL_NAME")
-                .unwrap_or_else(|_| "smollm3:3b".to_string()),
+            model_name: std::env::var("MODEL_NAME").unwrap_or_else(|_| "smollm3:3b".to_string()),
             #[allow(deprecated)]
-            auto_start_ollama: false,  // Always false for security
+            auto_start_ollama: false, // Always false for security
         }
     }
 }
@@ -429,12 +431,10 @@ mod tests {
     #[test]
     fn test_classification_result_serialization() {
         let result = ClassificationResult {
-            agents: vec![
-                AgentRecommendation {
-                    name: "test-agent".to_string(),
-                    reason: "Test reason".to_string(),
-                },
-            ],
+            agents: vec![AgentRecommendation {
+                name: "test-agent".to_string(),
+                reason: "Test reason".to_string(),
+            }],
             reasoning: "Test reasoning".to_string(),
             method: "rules".to_string(),
             llm_tags: Some(vec!["tag1".to_string()]),

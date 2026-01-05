@@ -27,10 +27,7 @@ async fn main() -> anyhow::Result<()> {
         trigger: "user_request".to_string(),
         git_context: Some(GitContext {
             branch: "feature/auth-fix".to_string(),
-            changed_files: vec![
-                "src/auth.ts".to_string(),
-                "src/db/users.ts".to_string(),
-            ],
+            changed_files: vec!["src/auth.ts".to_string(), "src/db/users.ts".to_string()],
             staged_files: vec![],
         }),
         agent_config_path: None,
