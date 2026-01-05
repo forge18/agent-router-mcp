@@ -199,6 +199,7 @@ pub enum Condition {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_valid_user_config() {
@@ -650,6 +651,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_config_default_values() {
         // Clear env vars if they exist
         std::env::remove_var("OLLAMA_URL");
@@ -761,6 +763,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_config_default_impl() {
         std::env::remove_var("OLLAMA_URL");
         std::env::remove_var("MODEL_NAME");
@@ -772,6 +775,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_config_with_env_vars() {
         std::env::set_var("OLLAMA_URL", "http://custom:8080");
         std::env::set_var("MODEL_NAME", "custom-model:1b");
@@ -786,6 +790,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_config_auto_start_ollama_warning() {
         // Test that AUTO_START_OLLAMA=true triggers the deprecation warning
         std::env::set_var("AUTO_START_OLLAMA", "true");
