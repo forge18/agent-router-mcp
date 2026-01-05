@@ -8,10 +8,45 @@
 
 A **stateless, config-driven** Model Context Protocol (MCP) server that intelligently routes requests to specialized AI subagents using a hybrid rule-based + LLM approach.
 
+## Table of Contents
+
+**Getting Started**
+- [Key Features](#key-features)
+- [Requirements](#requirements)
+- [Quick Start Installation](#quick-start-installation)
+  - [1. Download Binary](#1-download-binary)
+  - [2. Download Config Files](#2-download-config-files)
+  - [3. Configure MCP Client](#3-configure-mcp-client)
+
+**Using the Server**
+- [MCP Tools Reference](#mcp-tools-reference)
+  - [get_routing](#get_routing)
+  - [start_ollama](#start_ollama)
+  - [pull_model](#pull_model)
+  - [load_model](#load_model)
+- [How It Works](#how-it-works)
+
+**Configuration**
+- [Configuration Files](#configuration-files)
+  - [agents.json](#configagentsjson)
+  - [rules.json](#configrulesjson)
+  - [llm-tags.json](#configllm-tagsjson)
+- [Customization Examples](#customization-examples)
+- [Model Switching](#model-switching)
+
+**Advanced Topics**
+- [Architecture](#architecture)
+- [Creating Agents/Subagents](#creating-agentssubagents)
+- [Cross-Platform Support](#cross-platform-support)
+- [Compiling from Source](#compiling-from-source)
+- [Development](#development)
+
+---
+
 ## Key Features
 
 - 🔧 **Fully Config-Driven**: All routing logic defined in JSON - no code changes needed
-- 🚀 **Stateless Architecture**: No state between requests, loads configs fresh each time
+- 🚀 **Stateless Architecture**: No state between requests, configs loaded once on startup
 - ⚡ **Fast Routing**: Rule-based matching handles 90%+ of cases locally
 - 🧠 **LLM Semantic Tagging**: Uses any Ollama model for edge cases and semantic understanding
 - 🔄 **Flexible Rules**: Boolean logic (any_of, all_of) with nesting support
@@ -30,47 +65,49 @@ A **stateless, config-driven** Model Context Protocol (MCP) server that intellig
 - **Disk Space**: ~2GB for default model
   - Varies by model size and quantization
 
-## Installation
+## Quick Start Installation
 
-### 1. Install Ollama
+> **Prerequisites:** Make sure [Ollama](https://ollama.com) is installed and running. See [Requirements](#requirements) above.
 
-```bash
-# macOS
-brew install ollama
+### 1. Download Binary
 
-# Linux
-curl -fsSL https://ollama.com/install.sh | sh
+Download the latest release from [GitHub Releases](https://github.com/yourusername/agent-router-mcp/releases) for your platform:
 
-# Windows
-# Download from https://ollama.com
-```
+**Choose Your Binary:**
+- **Windows Intel/AMD**: `agent-router-mcp-windows-amd64.exe` (Most Windows PCs)
+- **Windows ARM**: `agent-router-mcp-windows-arm64.exe` (Surface Pro X, Windows Dev Kit 2023)
+- **macOS Intel**: `agent-router-mcp-macos-intel` (Intel Macs)
+- **macOS Apple Silicon**: `agent-router-mcp-macos-silicon` (M1/M2/M3 Macs)
+- **Linux Intel/AMD**: `agent-router-mcp-linux-amd64` (Most PCs/servers)
+- **Linux ARM**: `agent-router-mcp-linux-arm64` (Raspberry Pi 4+, AWS Graviton)
 
-Start Ollama (Linux only - macOS/Windows run as service):
-```bash
-ollama serve
-```
-
-**Note:** The model (~2GB) will be automatically downloaded on first run.
-
-### 2. Download the Binary
-
-Download the latest release from [GitHub Releases](https://github.com/yourusername/agent-router-mcp/releases) for your platform and place it in a convenient location.
+**Not sure which binary?** On the command line:
+- **Linux/macOS**: Run `uname -m`
+  - Output `x86_64` → use `amd64`
+  - Output `aarch64` or `arm64` → use `arm64`
+- **Windows**: Run `echo %PROCESSOR_ARCHITECTURE%`
+  - Output `AMD64` → use `windows-amd64.exe`
+  - Output `ARM64` → use `windows-arm64.exe`
 
 **macOS/Linux**: Make it executable
 ```bash
-chmod +x agent-router-mcp
+chmod +x agent-router-mcp-*
 ```
 
-### 3. Download the Config Files
+### 2. Download Config Files
 
-Download the example config files from the repository:
+Download the config archive from [GitHub Releases](https://github.com/yourusername/agent-router-mcp/releases):
+- **Windows**: Download `agent-router-mcp-config.zip` and extract
+- **macOS/Linux**: Download `agent-router-mcp-config.tar.gz` and extract with `tar -xzf agent-router-mcp-config.tar.gz`
+
+Place the extracted files in a folder (e.g., `C:\agent-configs\` on Windows or `~/agent-configs/` on macOS/Linux).
+
+Alternatively, download individual files:
 - [agents.json](https://raw.githubusercontent.com/yourusername/agent-router-mcp/main/config/agents.json)
 - [rules.json](https://raw.githubusercontent.com/yourusername/agent-router-mcp/main/config/rules.json)
 - [llm-tags.json](https://raw.githubusercontent.com/yourusername/agent-router-mcp/main/config/llm-tags.json)
 
-Place them in a folder (e.g., `C:\agent-configs\` on Windows or `~/agent-configs/` on macOS/Linux).
-
-### 4. Configure Your MCP Client
+### 3. Configure MCP Client
 
 Add to your MCP client's configuration file (location varies by client - check your client's documentation).
 
@@ -78,7 +115,7 @@ Add to your MCP client's configuration file (location varies by client - check y
 ```json
 {
   "mcpServers": {
-    "agent-organizer": {
+    "agent-router": {
       "type": "stdio",
       "command": "C:\\path\\to\\agent-router-mcp.exe",
       "env": {
@@ -97,7 +134,7 @@ Add to your MCP client's configuration file (location varies by client - check y
 ```json
 {
   "mcpServers": {
-    "agent-organizer": {
+    "agent-router": {
       "type": "stdio",
       "command": "/path/to/agent-router-mcp",
       "env": {
@@ -114,53 +151,15 @@ Add to your MCP client's configuration file (location varies by client - check y
 
 Replace the paths with your actual file locations.
 
-## Architecture
+---
 
-This MCP is a **pure router** - it doesn't execute agents, it just determines which subagents should handle a request.
-
-### Flow Diagram
-
-```
-User Request
-  ├─ Prompt: "Fix auth bug"
-  ├─ Files: src/auth.ts, src/db/users.ts
-  └─ Trigger: user_request
-       ↓
-┌──────────────────────────────────────────────────┐
-│  Agent Router MCP (Stateless Router)         │
-│                                                  │
-│  1. Load Configs                                 │
-│     • agents.json (agent definitions)            │
-│     • rules.json (routing rules)                 │
-│     • llm-tags.json (semantic tags)              │
-│                                                  │
-│  2. Apply Rule-Based Matching                    │
-│     • *.ts → language-reviewer-typescript        │
-│     • *auth* → security-auditor                  │
-│                                                  │
-│  3. LLM Semantic Tagging (if needed)             │
-│     • Ollama analyzes code                       │
-│     • Returns: ["security-concern"]              │
-│                                                  │
-│  4. Apply Tag-Based Rules                        │
-│     • security-concern → security-auditor        │
-│                                                  │
-│  5. LLM Fallback (if no matches)                 │
-│     • Direct agent classification                │
-└──────────────────────────────────────────────────┘
-       ↓
-Routing Result
-  ├─ Agents: [language-reviewer-typescript, security-auditor]
-  ├─ Method: "rules"
-  └─ Reasoning: "Clear rule-based matches"
-```
-
-## MCP Tools
+## MCP Tools Reference
 
 The server exposes 4 tools for managing Ollama and getting routing instructions:
 
 ### `get_routing`
-Get routing instructions for a user request. This is the main tool that performs intelligent routing.
+
+Get routing instructions for a user request. **This is the main tool** that performs intelligent routing.
 
 **Input:**
 ```json
@@ -214,6 +213,7 @@ The tool performs automatic prerequisite checks and returns helpful error messag
 When you receive these errors, call the appropriate tool (`start_ollama`, `pull_model`, or `load_model`).
 
 ### `start_ollama`
+
 Start the Ollama service (useful if it's not already running).
 
 **Output:**
@@ -225,6 +225,7 @@ Start the Ollama service (useful if it's not already running).
 ```
 
 ### `pull_model`
+
 Download a model from the Ollama registry.
 
 **Input:**
@@ -243,6 +244,7 @@ Download a model from the Ollama registry.
 ```
 
 ### `load_model`
+
 Pre-load the configured model into memory for faster first request.
 
 **Output:**
@@ -252,6 +254,21 @@ Pre-load the configured model into memory for faster first request.
   "message": "Model smollm3:3b loaded successfully"
 }
 ```
+
+---
+
+## How It Works
+
+1. **Stateless**: No state maintained between requests
+2. **Config Loading**: Loads `agents.json`, `rules.json`, `llm-tags.json` fresh each request
+3. **Rule Matching**: Evaluates all rules, returns matched agents
+4. **High Confidence Check**: If clear matches (files + lifecycle), returns immediately
+5. **LLM Tagging**: If ambiguous, calls Ollama to identify semantic tags
+6. **Tag Rules**: Applies tag-based rules to get additional agents
+7. **LLM Fallback**: If still no matches, asks LLM to directly classify
+8. **Return**: JSON result with agent names and routing reasoning
+
+---
 
 ## Configuration Files
 
@@ -347,27 +364,6 @@ Define semantic tags for LLM to identify:
 }
 ```
 
-## Example Agent Names (included in default config)
-
-The default [agents.json](config/agents.json) includes 20 example agent names that you can route to. **You define your own agents** - these are just examples:
-
-### Language Reviewers
-- `language-reviewer-typescript`, `language-reviewer-rust`, `language-reviewer-python`, `language-reviewer-javascript`, `language-reviewer-csharp`, `language-reviewer-lua`, `language-reviewer-zig`, `language-reviewer-gdscript`
-
-### Security & Quality
-- `security-auditor`, `code-reviewer`
-
-### Testing
-- `test-engineer-junior`, `test-engineer-midlevel`, `test-engineer-senior`
-
-### DevOps
-- `devops-engineer-junior`, `devops-engineer-midlevel`, `devops-engineer-senior`
-
-### Specialized
-- `planning-architect`, `documentation-writer`, `performance-optimizer`, `accessibility-specialist`
-
-**Note:** These are just names for routing. Your actual subagents live elsewhere (e.g., as separate MCP tools, CLI commands, or API endpoints).
-
 ## Customization Examples
 
 ### Add a New Agent
@@ -458,6 +454,58 @@ export MODEL_NAME="qwen2.5:3b"
 
 Browse all models: https://ollama.com/library
 
+---
+
+## Architecture
+
+This MCP is a **pure router** - it doesn't execute agents, it just determines which subagents should handle a request.
+
+### Flow Diagram
+
+```
+User Request
+  ├─ Prompt: "Fix auth bug"
+  ├─ Files: src/auth.ts, src/db/users.ts
+  └─ Trigger: user_request
+       ↓
+┌──────────────────────────────────────────────────┐
+│  Agent Router MCP (Stateless Router)         │
+│                                                  │
+│  1. Load Configs                                 │
+│     • agents.json (agent definitions)            │
+│     • rules.json (routing rules)                 │
+│     • llm-tags.json (semantic tags)              │
+│                                                  │
+│  2. Apply Rule-Based Matching                    │
+│     • *.ts → language-reviewer-typescript        │
+│     • *auth* → security-auditor                  │
+│                                                  │
+│  3. LLM Semantic Tagging (if needed)             │
+│     • Ollama analyzes code                       │
+│     • Returns: ["security-concern"]              │
+│                                                  │
+│  4. Apply Tag-Based Rules                        │
+│     • security-concern → security-auditor        │
+│                                                  │
+│  5. LLM Fallback (if no matches)                 │
+│     • Direct agent classification                │
+└──────────────────────────────────────────────────┘
+       ↓
+Routing Result
+  ├─ Agents: [language-reviewer-typescript, security-auditor]
+  ├─ Method: "rules"
+  └─ Reasoning: "Clear rule-based matches"
+```
+
+**Example Agent Names (included in default config):**
+- **Language Reviewers**: `language-reviewer-typescript`, `language-reviewer-rust`, `language-reviewer-python`, `language-reviewer-javascript`, `language-reviewer-csharp`, `language-reviewer-lua`, `language-reviewer-zig`, `language-reviewer-gdscript`
+- **Security & Quality**: `security-auditor`, `code-reviewer`
+- **Testing**: `test-engineer-junior`, `test-engineer-midlevel`, `test-engineer-senior`
+- **DevOps**: `devops-engineer-junior`, `devops-engineer-midlevel`, `devops-engineer-senior`
+- **Specialized**: `planning-architect`, `documentation-writer`, `performance-optimizer`, `accessibility-specialist`
+
+> **Note:** These are just names for routing. Your actual subagents live elsewhere (e.g., as separate MCP tools, CLI commands, or API endpoints).
+
 ## Creating Agents/Subagents
 
 This router determines which agents should handle requests. You need to create the actual agent implementations in your IDE.
@@ -492,17 +540,13 @@ These platforms can use this router via MCP integration or workarounds:
 
 ## Cross-Platform Support
 
-### ✅ macOS
-- Install: `brew install ollama`
-- Runs as background service automatically
+This MCP server works on all major platforms. Ollama installation varies by platform:
 
-### ✅ Linux
-- Install: `curl -fsSL https://ollama.com/install.sh | sh`
-- Start: `ollama serve`
-
-### ✅ Windows
-- Download from https://ollama.com
-- Runs as Windows service automatically
+| Platform | Installation | Service Behavior |
+|----------|-------------|------------------|
+| **macOS** | `brew install ollama` | Runs as background service automatically |
+| **Linux** | `curl -fsSL https://ollama.com/install.sh \| sh` | Start with `ollama serve` |
+| **Windows** | Download from [ollama.com](https://ollama.com) | Runs as Windows service automatically |
 
 ## Compiling from Source
 
@@ -543,11 +587,12 @@ cargo install cargo-zigbuild
 ./scripts/build-all.sh
 
 # Binaries will be created in dist/:
-# - agent-router-mcp-linux-x86_64
-# - agent-router-mcp-linux-aarch64
+# - agent-router-mcp-linux-amd64
+# - agent-router-mcp-linux-arm64
 # - agent-router-mcp-macos-intel
 # - agent-router-mcp-macos-silicon
-# - agent-router-mcp-windows-x86_64.exe
+# - agent-router-mcp-windows-amd64.exe
+# - agent-router-mcp-windows-arm64.exe
 ```
 
 ### Manual Build

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-01-05
+
+### Added
+- Windows ARM64 binary support (`aarch64-pc-windows-gnullvm`)
+- Comprehensive integration test suite with 7 test cases
+- Thread-safe lazy initialization using `OnceCell` for classifier
+- Regex pattern caching for improved performance
+- Config file validation (checks for empty configs, duplicates, invalid rules)
+- Config archives in releases (`.zip` for Windows, `.tar.gz` for macOS/Linux)
+- Comprehensive documentation for `classify()` function
+- Table of contents in README for better navigation
+
+### Changed
+- Reorganized README structure with clear section divisions
+- Streamlined installation instructions (Ollama now prerequisite only)
+- Improved Cross-Platform Support section with comparison table
+- Consolidated duplicate content in README
+
+### Fixed
+- P0: Panic risk in `ModelManager::new()` - now returns `Result` with proper error handling
+- P0: Regex compilation on every request - now cached globally with thread-safe `lazy_static`
+- P0: Race condition in auto-initialization - now uses `OnceCell` for safe concurrent access
+- Config validation now runs at startup to catch invalid configurations early
+
+### Performance
+- Regex pattern caching eliminates O(n) recompilation overhead
+- Thread-safe classifier initialization prevents redundant initializations
+
+## [0.1.1] - 2025-01-04
+
 ### Added
 - Initial release of Agent Router MCP
 - Config-driven routing with `agents.json`, `rules.json`, and `llm-tags.json`
@@ -19,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - branch_regex
   - git_lifecycle
   - llm_tag
-- Cross-platform binaries (Linux x86_64/ARM64, macOS Intel/Silicon, Windows)
+- Cross-platform binaries (Linux x86_64/ARM64, macOS Intel/Silicon, Windows x86_64)
 - GitHub Actions CI/CD pipeline
 - Automated releases with checksums
 - Example configurations for 20 agent types
@@ -30,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stateless architecture (no persistent state)
 - Config files loaded fresh each request
 
-## [0.1.0] - YYYY-MM-DD
+## [0.1.0] - 2025-01-03
 
 ### Added
 - Initial public release

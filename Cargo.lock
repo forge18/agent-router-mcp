@@ -4,11 +4,12 @@ version = 4
 
 [[package]]
 name = "agent-router-mcp"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
  "glob",
+ "lazy_static",
  "regex",
  "reqwest",
  "rust-mcp-sdk",

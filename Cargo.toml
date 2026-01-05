@@ -1,6 +1,6 @@
 [package]
 name = "agent-router-mcp"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 authors = ["Agent Router MCP Contributors"]
 description = "A stateless, config-driven Model Context Protocol (MCP) server that intelligently routes requests to specialized AI subagents"
@@ -9,6 +9,14 @@ license = "MIT"
 readme = "README.md"
 keywords = ["mcp", "agent", "router", "ai", "ollama"]
 categories = ["command-line-utilities", "development-tools"]
+
+[lib]
+name = "agent_router_mcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "agent-router-mcp"
+path = "src/main.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -23,6 +31,7 @@ glob = "0.3"
 regex = "1"
 rust-mcp-sdk = { version = "0.8.1", features = ["server", "stdio", "macros"] }
 async-trait = "0.1"
+lazy_static = "1.5"
 
 [dev-dependencies]
 wiremock = "0.6"
