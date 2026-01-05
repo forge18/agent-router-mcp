@@ -789,19 +789,21 @@ mod tests {
 
     #[test]
     fn test_config_file_too_large() {
+        use std::env;
         use std::fs;
         use std::io::Write;
 
         // Create a temporary config file that's too large
-        let temp_path = "/tmp/test_large_agents_config.json";
-        let mut file = fs::File::create(temp_path).unwrap();
+        let temp_dir = env::temp_dir();
+        let temp_path = temp_dir.join("test_large_agents_config.json");
+        let mut file = fs::File::create(&temp_path).unwrap();
         // Write 2MB of data (over the 1MB limit)
         let large_data = format!(r#"{{"agents": [{}]}}"#, "x".repeat(2_000_000));
         file.write_all(large_data.as_bytes()).unwrap();
         drop(file);
 
         // Try to load the oversized config - should fail
-        let result = load_user_config(temp_path);
+        let result = load_user_config(temp_path.to_str().unwrap());
         assert!(result.is_err());
         if let Err(e) = result {
             let error_msg = e.to_string();
@@ -809,7 +811,7 @@ mod tests {
         }
 
         // Cleanup
-        let _ = fs::remove_file(temp_path);
+        let _ = fs::remove_file(&temp_path);
     }
 
     #[test]
