@@ -150,10 +150,52 @@ pub struct UserConfig {
     pub agents: Vec<AgentDefinition>,
 }
 
+impl UserConfig {
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        if self.agents.is_empty() {
+            return Err("UserConfig must contain at least one agent".to_string());
+        }
+
+        // Check for duplicate agent names
+        let mut names = std::collections::HashSet::new();
+        for agent in &self.agents {
+            if agent.name.trim().is_empty() {
+                return Err("Agent name cannot be empty".to_string());
+            }
+            if !names.insert(agent.name.clone()) {
+                return Err(format!("Duplicate agent name: {}", agent.name));
+            }
+        }
+
+        Ok(())
+    }
+}
+
 // LLM tag definitions for semantic tagging
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LlmTagConfig {
     pub tags: Vec<LlmTagDefinition>,
+}
+
+impl LlmTagConfig {
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        if self.tags.is_empty() {
+            return Err("LlmTagConfig must contain at least one tag".to_string());
+        }
+
+        // Check for duplicate tag names and empty names
+        let mut names = std::collections::HashSet::new();
+        for tag in &self.tags {
+            if tag.name.trim().is_empty() {
+                return Err("Tag name cannot be empty".to_string());
+            }
+            if !names.insert(tag.name.clone()) {
+                return Err(format!("Duplicate tag name: {}", tag.name));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -167,6 +209,33 @@ pub struct LlmTagDefinition {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RulesConfig {
     pub rules: Vec<Rule>,
+}
+
+impl RulesConfig {
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        if self.rules.is_empty() {
+            return Err("RulesConfig must contain at least one rule".to_string());
+        }
+
+        // Validate each rule has at least one target agent
+        for (idx, rule) in self.rules.iter().enumerate() {
+            if rule.route_to_subagents.is_empty() {
+                return Err(format!(
+                    "Rule #{} must route to at least one agent",
+                    idx + 1
+                ));
+            }
+
+            // Check for empty agent names
+            for agent_name in &rule.route_to_subagents {
+                if agent_name.trim().is_empty() {
+                    return Err(format!("Rule #{} has empty agent name", idx + 1));
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

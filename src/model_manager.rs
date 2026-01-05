@@ -41,14 +41,16 @@ pub struct ModelManager {
 }
 
 impl ModelManager {
-    pub fn new(config: Config) -> Self {
-        Self {
-            client: Client::builder()
-                .timeout(Duration::from_secs(60))
-                .build()
-                .unwrap(),
-            config,
-        }
+    pub fn new(config: Config) -> Result<Self> {
+        // Build HTTP client with TLS support
+        // This can fail if the TLS backend cannot be initialized (e.g., missing CA certs,
+        // corrupted OpenSSL installation, or constrained container environments)
+        let client = Client::builder()
+            .timeout(Duration::from_secs(60))
+            .build()
+            .context("Failed to create HTTP client - TLS backend initialization failed. This may indicate missing CA certificates or a corrupted TLS installation.")?;
+
+        Ok(Self { client, config })
     }
 
     pub async fn initialize(&mut self) -> Result<()> {
@@ -502,7 +504,7 @@ mod tests {
 
     #[test]
     fn test_build_tagging_prompt_basic() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let input = ClassificationInput {
             user_prompt: "Fix login bug".to_string(),
             trigger: "user_request".to_string(),
@@ -530,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_build_tagging_prompt_no_git_context() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let input = ClassificationInput {
             user_prompt: "Add feature".to_string(),
             trigger: "user_request".to_string(),
@@ -551,7 +553,7 @@ mod tests {
 
     #[test]
     fn test_build_tagging_prompt_sanitizes_input() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let input = ClassificationInput {
             user_prompt: "  Fix   bug  \n\n  with  whitespace  ".to_string(),
             trigger: "user_request".to_string(),
@@ -577,7 +579,7 @@ mod tests {
 
     #[test]
     fn test_build_prompt_basic() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let input = ClassificationInput {
             user_prompt: "Fix bug".to_string(),
             trigger: "user_request".to_string(),
@@ -607,7 +609,7 @@ mod tests {
 
     #[test]
     fn test_build_prompt_no_git_context() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let input = ClassificationInput {
             user_prompt: "General request".to_string(),
             trigger: "user_request".to_string(),
@@ -629,7 +631,7 @@ mod tests {
 
     #[test]
     fn test_build_prompt_sanitizes_input() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let input = ClassificationInput {
             user_prompt: "  Fix   bug  \n\n  ".to_string(),
             trigger: "  user_request  ".to_string(),
@@ -657,7 +659,7 @@ mod tests {
 
     #[test]
     fn test_parse_tag_list_valid_tags() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let tag_config = create_test_tag_config();
 
         let response = "authentication\ndatabase\napi";
@@ -671,7 +673,7 @@ mod tests {
 
     #[test]
     fn test_parse_tag_list_filters_invalid_tags() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let tag_config = create_test_tag_config();
 
         let response = "authentication\ninvalid-tag\ndatabase\nanother-invalid";
@@ -685,7 +687,7 @@ mod tests {
 
     #[test]
     fn test_parse_tag_list_filters_explanations() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let tag_config = create_test_tag_config();
 
         let response =
@@ -700,7 +702,7 @@ mod tests {
 
     #[test]
     fn test_parse_tag_list_handles_whitespace() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let tag_config = create_test_tag_config();
 
         let response = "  authentication  \n  database  \n\n  api  ";
@@ -714,7 +716,7 @@ mod tests {
 
     #[test]
     fn test_parse_tag_list_empty_response() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let tag_config = create_test_tag_config();
 
         let response = "";
@@ -725,7 +727,7 @@ mod tests {
 
     #[test]
     fn test_parse_agent_list_valid_agents() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let user_config = create_test_user_config();
 
         let response = "test-engineer\nbackend-developer";
@@ -738,7 +740,7 @@ mod tests {
 
     #[test]
     fn test_parse_agent_list_filters_invalid_agents() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let user_config = create_test_user_config();
 
         let response = "test-engineer\ninvalid-agent\nbackend-developer\nanother-invalid";
@@ -752,7 +754,7 @@ mod tests {
 
     #[test]
     fn test_parse_agent_list_filters_explanations() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let user_config = create_test_user_config();
 
         let response = "test-engineer\nReason: For testing\nbackend-developer\nNote: Backend work";
@@ -766,7 +768,7 @@ mod tests {
 
     #[test]
     fn test_parse_agent_list_handles_whitespace() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let user_config = create_test_user_config();
 
         let response = "  test-engineer  \n  backend-developer  \n\n  frontend-developer  ";
@@ -780,7 +782,7 @@ mod tests {
 
     #[test]
     fn test_parse_agent_list_empty_response() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let user_config = create_test_user_config();
 
         let response = "";
@@ -791,7 +793,7 @@ mod tests {
 
     #[test]
     fn test_parse_agent_list_case_sensitive() {
-        let manager = ModelManager::new(create_test_config());
+        let manager = ModelManager::new(create_test_config()).unwrap();
         let user_config = create_test_user_config();
 
         // Agent names are case-sensitive
@@ -843,7 +845,7 @@ mod tests {
 
         let mut config = create_test_config();
         config.ollama_url = mock_server.uri();
-        let manager = ModelManager::new(config);
+        let manager = ModelManager::new(config).unwrap();
 
         let result = manager.check_ollama_running().await;
         assert!(result.is_ok());
@@ -854,7 +856,7 @@ mod tests {
     async fn test_check_ollama_running_failure() {
         let mut config = create_test_config();
         config.ollama_url = "http://localhost:99999".to_string();
-        let manager = ModelManager::new(config);
+        let manager = ModelManager::new(config).unwrap();
 
         let result = manager.check_ollama_running().await;
         assert!(result.is_ok());

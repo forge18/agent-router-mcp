@@ -6,31 +6,106 @@ use tracing::info;
 
 pub struct Classifier {
     pub model_manager: ModelManager,
+    user_config: UserConfig,
+    tag_config: LlmTagConfig,
+    rules_config: RulesConfig,
 }
 
 impl Classifier {
-    pub fn new(config: Config) -> Self {
-        let model_manager = ModelManager::new(config);
-        Self { model_manager }
+    pub fn new(config: Config) -> Result<Self> {
+        let model_manager = ModelManager::new(config)?;
+        Ok(Self {
+            model_manager,
+            user_config: UserConfig { agents: vec![] },
+            tag_config: LlmTagConfig { tags: vec![] },
+            rules_config: RulesConfig { rules: vec![] },
+        })
     }
 
     pub async fn initialize(&mut self) -> Result<()> {
-        self.model_manager.initialize().await
+        self.model_manager.initialize().await?;
+
+        // Load and cache configs on startup
+        self.user_config = Self::load_user_config_static()?;
+        self.tag_config = Self::load_tag_config_static()?;
+        self.rules_config = Self::load_rules_config_static()?;
+
+        info!(
+            "Configs loaded: {} agents, {} tags, {} rules",
+            self.user_config.agents.len(),
+            self.tag_config.tags.len(),
+            self.rules_config.rules.len()
+        );
+
+        Ok(())
     }
 
+    /// Classify a request and determine which agents should handle it.
+    ///
+    /// This function implements a multi-stage classification strategy for optimal performance:
+    ///
+    /// 1. **Rule-Based Classification (Fast Path)**
+    ///    - Evaluates file patterns, regex matches, git lifecycle triggers
+    ///    - Returns immediately if high-confidence matches found
+    ///    - ~1ms latency, no LLM calls
+    ///
+    /// 2. **LLM Semantic Tagging**
+    ///    - If rules don't match or are low-confidence, calls LLM to identify semantic tags
+    ///    - Tags describe the nature of the task (e.g., "security", "refactoring", "testing")
+    ///    - ~200-500ms latency
+    ///
+    /// 3. **Tag-Based Rules**
+    ///    - Applies rules that match LLM-identified tags
+    ///    - Combines with any low-confidence rule matches
+    ///    - Returns if any agents found
+    ///
+    /// 4. **LLM Direct Classification (Fallback)**
+    ///    - If no rules or tags match, asks LLM to directly select agents
+    ///    - ~300-600ms latency
+    ///    - Most flexible but slowest path
+    ///
+    /// The strategy optimizes for:
+    /// - **Speed**: Fast rule-based path avoids LLM for common patterns
+    /// - **Accuracy**: LLM provides semantic understanding when rules insufficient
+    /// - **Flexibility**: Supports custom config paths per request
     pub async fn classify(&self, input: &ClassificationInput) -> Result<ClassificationResult> {
         // Security: Validate input before processing
         input
             .validate()
             .map_err(|e| anyhow::anyhow!("Input validation failed: {}", e))?;
 
-        // Load configs (stateless - loads fresh each time)
-        let user_config = self.load_user_config(input)?;
-        let tag_config = self.load_tag_config(input)?;
-        let rules_config = self.load_rules_config(input)?;
+        // Use cached configs (loaded on startup)
+        // Note: If user provides custom paths in input, load those instead
+        let user_config;
+        let tag_config;
+        let rules_config;
+
+        let user_config_ref = if let Some(ref path) = input.agent_config_path {
+            info!("Loading agent config from request path: {}", path);
+            user_config = rules::load_user_config(path)?;
+            &user_config
+        } else {
+            &self.user_config
+        };
+
+        let tag_config_ref = if let Some(ref path) = input.llm_tags_path {
+            info!("Loading LLM tag config from request path: {}", path);
+            tag_config = rules::load_llm_tag_config(path)?;
+            &tag_config
+        } else {
+            &self.tag_config
+        };
+
+        let rules_config_ref = if let Some(ref path) = input.rules_config_path {
+            info!("Loading rules config from request path: {}", path);
+            rules_config = rules::load_rules_config(path)?;
+            &rules_config
+        } else {
+            &self.rules_config
+        };
 
         // Step 1: Check rule-based matches (fast path)
-        let rule_based_agents = rules::apply_rules(input, &rules_config);
+        let rule_based_agents = rules::apply_rules(input, rules_config_ref);
 
         if !rule_based_agents.is_empty() && self.is_high_confidence(&rule_based_agents, input) {
             info!(
@@ -52,11 +127,14 @@ impl Classifier {
         }
 
         // Step 2: LLM semantic tagging
-        let llm_tags = self.model_manager.identify_tags(input, &tag_config).await?;
+        let llm_tags = self
+            .model_manager
+            .identify_tags(input, tag_config_ref)
+            .await?;
         info!("LLM identified tags: {:?}", llm_tags);
 
         // Step 3: Apply tag-based rules
-        let tag_based_agents = rules::apply_llm_tag_rules(&llm_tags, &rules_config);
+        let tag_based_agents = rules::apply_llm_tag_rules(&llm_tags, rules_config_ref);
 
         // Combine rule-based + tag-based agents
         let mut all_agents = rule_based_agents.clone();
@@ -83,7 +161,7 @@ impl Classifier {
         }
 
         // Step 4: LLM fallback - direct agent classification
-        let llm_agents = self.model_manager.classify(input, &user_config).await?;
+        let llm_agents = self.model_manager.classify(input, user_config_ref).await?;
 
         info!("Using LLM classification: {} agents", llm_agents.len());
         Ok(ClassificationResult {
@@ -100,12 +178,10 @@ impl Classifier {
         })
     }
 
-    pub fn load_user_config(&self, input: &ClassificationInput) -> Result<UserConfig> {
-        // Priority: 1. Input parameter, 2. Environment variable, 3. Default
-        if let Some(path) = &input.agent_config_path {
-            info!("Loading agent config from input: {}", path);
-            rules::load_user_config(path)
-        } else if let Ok(path) = std::env::var("AGENTS_CONFIG_PATH") {
+    // Load configs on startup (static methods check env vars and defaults)
+    fn load_user_config_static() -> Result<UserConfig> {
+        // Priority: 1. Environment variable, 2. Default
+        if let Ok(path) = std::env::var("AGENTS_CONFIG_PATH") {
             info!("Loading agent config from env: {}", path);
             rules::load_user_config(&path)
         } else {
@@ -114,12 +190,9 @@ impl Classifier {
         }
     }
 
-    pub fn load_tag_config(&self, input: &ClassificationInput) -> Result<LlmTagConfig> {
-        // Priority: 1. Input parameter, 2. Environment variable, 3. Default
-        if let Some(path) = &input.llm_tags_path {
-            info!("Loading LLM tag config from input: {}", path);
-            rules::load_llm_tag_config(path)
-        } else if let Ok(path) = std::env::var("LLM_TAGS_CONFIG_PATH") {
+    fn load_tag_config_static() -> Result<LlmTagConfig> {
+        // Priority: 1. Environment variable, 2. Default
+        if let Ok(path) = std::env::var("LLM_TAGS_CONFIG_PATH") {
             info!("Loading LLM tag config from env: {}", path);
             rules::load_llm_tag_config(&path)
         } else {
@@ -128,12 +201,9 @@ impl Classifier {
         }
     }
 
-    fn load_rules_config(&self, input: &ClassificationInput) -> Result<RulesConfig> {
-        // Priority: 1. Input parameter, 2. Environment variable, 3. Default
-        if let Some(path) = &input.rules_config_path {
-            info!("Loading rules config from input: {}", path);
-            rules::load_rules_config(path)
-        } else if let Ok(path) = std::env::var("RULES_CONFIG_PATH") {
+    fn load_rules_config_static() -> Result<RulesConfig> {
+        // Priority: 1. Environment variable, 2. Default
+        if let Ok(path) = std::env::var("RULES_CONFIG_PATH") {
             info!("Loading rules config from env: {}", path);
             rules::load_rules_config(&path)
         } else {
@@ -165,7 +235,7 @@ mod tests {
 
     #[test]
     fn test_is_high_confidence_with_files() {
-        let classifier = Classifier::new(Config::default());
+        let classifier = Classifier::new(Config::default()).unwrap();
 
         let input = ClassificationInput {
             user_prompt: "Test".to_string(),
@@ -186,7 +256,7 @@ mod tests {
 
     #[test]
     fn test_is_high_confidence_with_lifecycle_trigger() {
-        let classifier = Classifier::new(Config::default());
+        let classifier = Classifier::new(Config::default()).unwrap();
 
         let triggers = vec!["commit", "pre-commit", "pull_request"];
 
@@ -211,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_is_not_high_confidence() {
-        let classifier = Classifier::new(Config::default());
+        let classifier = Classifier::new(Config::default()).unwrap();
 
         let input = ClassificationInput {
             user_prompt: "Test".to_string(),
@@ -228,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_is_not_high_confidence_empty_files() {
-        let classifier = Classifier::new(Config::default());
+        let classifier = Classifier::new(Config::default()).unwrap();
 
         let input = ClassificationInput {
             user_prompt: "Test".to_string(),
@@ -248,102 +318,8 @@ mod tests {
     }
 
     #[test]
-    fn test_load_user_config_priority() {
-        // Test that input path takes priority
-        let classifier = Classifier::new(Config::default());
-
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: None,
-            agent_config_path: Some("./config/agents.json".to_string()),
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
-
-        // Should load from the specified path
-        let result = classifier.load_user_config(&input);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_load_tag_config_priority() {
-        let classifier = Classifier::new(Config::default());
-
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: None,
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: Some("./config/llm-tags.json".to_string()),
-        };
-
-        let result = classifier.load_tag_config(&input);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_load_rules_config_priority() {
-        let classifier = Classifier::new(Config::default());
-
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: None,
-            agent_config_path: None,
-            rules_config_path: Some("./config/rules.json".to_string()),
-            llm_tags_path: None,
-        };
-
-        let result = classifier.load_rules_config(&input);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_load_config_with_invalid_path() {
-        let classifier = Classifier::new(Config::default());
-
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: None,
-            agent_config_path: Some("/nonexistent/path/config.json".to_string()),
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
-
-        let result = classifier.load_user_config(&input);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_config_default_paths() {
-        let classifier = Classifier::new(Config::default());
-
-        // Clear env vars
-        std::env::remove_var("AGENTS_CONFIG_PATH");
-        std::env::remove_var("RULES_CONFIG_PATH");
-        std::env::remove_var("LLM_TAGS_CONFIG_PATH");
-
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: None,
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
-
-        // Should load default configs
-        assert!(classifier.load_user_config(&input).is_ok());
-        assert!(classifier.load_tag_config(&input).is_ok());
-        assert!(classifier.load_rules_config(&input).is_ok());
-    }
-
-    #[test]
     fn test_high_confidence_scenarios() {
-        let classifier = Classifier::new(Config::default());
+        let classifier = Classifier::new(Config::default()).unwrap();
 
         // Test 1: File match
         let input_files = ClassificationInput {
@@ -358,7 +334,7 @@ mod tests {
             rules_config_path: None,
             llm_tags_path: None,
         };
-        assert!(classifier.is_high_confidence(&vec![], &input_files));
+        assert!(classifier.is_high_confidence(&[], &input_files));
 
         // Test 2: Commit trigger
         let input_commit = ClassificationInput {
@@ -369,7 +345,7 @@ mod tests {
             rules_config_path: None,
             llm_tags_path: None,
         };
-        assert!(classifier.is_high_confidence(&vec![], &input_commit));
+        assert!(classifier.is_high_confidence(&[], &input_commit));
 
         // Test 3: Both files and commit
         let input_both = ClassificationInput {
@@ -384,12 +360,12 @@ mod tests {
             rules_config_path: None,
             llm_tags_path: None,
         };
-        assert!(classifier.is_high_confidence(&vec![], &input_both));
+        assert!(classifier.is_high_confidence(&[], &input_both));
     }
 
     #[test]
     fn test_low_confidence_scenarios() {
-        let classifier = Classifier::new(Config::default());
+        let classifier = Classifier::new(Config::default()).unwrap();
 
         // No files, no special trigger
         let input = ClassificationInput {
@@ -400,7 +376,7 @@ mod tests {
             rules_config_path: None,
             llm_tags_path: None,
         };
-        assert!(!classifier.is_high_confidence(&vec![], &input));
+        assert!(!classifier.is_high_confidence(&[], &input));
 
         // Empty git context
         let input_empty = ClassificationInput {
@@ -415,64 +391,12 @@ mod tests {
             rules_config_path: None,
             llm_tags_path: None,
         };
-        assert!(!classifier.is_high_confidence(&vec![], &input_empty));
-    }
-
-    #[test]
-    fn test_config_loading_env_vars() {
-        let classifier = Classifier::new(Config::default());
-
-        // Set env vars
-        std::env::set_var("AGENTS_CONFIG_PATH", "./config/agents.json");
-        std::env::set_var("RULES_CONFIG_PATH", "./config/rules.json");
-        std::env::set_var("LLM_TAGS_CONFIG_PATH", "./config/llm-tags.json");
-
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: None,
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
-
-        // Should load from env vars
-        assert!(classifier.load_user_config(&input).is_ok());
-        assert!(classifier.load_rules_config(&input).is_ok());
-        assert!(classifier.load_tag_config(&input).is_ok());
-
-        // Cleanup
-        std::env::remove_var("AGENTS_CONFIG_PATH");
-        std::env::remove_var("RULES_CONFIG_PATH");
-        std::env::remove_var("LLM_TAGS_CONFIG_PATH");
-    }
-
-    #[test]
-    fn test_config_loading_priority_order() {
-        let classifier = Classifier::new(Config::default());
-
-        // Set env var
-        std::env::set_var("AGENTS_CONFIG_PATH", "./config/agents.json");
-
-        // Input path should take priority over env var
-        let input_with_path = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: None,
-            agent_config_path: Some("./config/agents.json".to_string()),
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
-
-        assert!(classifier.load_user_config(&input_with_path).is_ok());
-
-        // Cleanup
-        std::env::remove_var("AGENTS_CONFIG_PATH");
+        assert!(!classifier.is_high_confidence(&[], &input_empty));
     }
 
     #[test]
     fn test_lifecycle_trigger_variations() {
-        let classifier = Classifier::new(Config::default());
+        let classifier = Classifier::new(Config::default()).unwrap();
 
         let lifecycle_triggers = vec!["commit", "pre-commit", "pull_request"];
         let non_lifecycle_triggers = vec!["user_request", "custom", "post-commit"];
@@ -487,7 +411,7 @@ mod tests {
                 llm_tags_path: None,
             };
             assert!(
-                classifier.is_high_confidence(&vec![], &input),
+                classifier.is_high_confidence(&[], &input),
                 "Should be high confidence for lifecycle trigger: {}",
                 trigger
             );
@@ -503,36 +427,10 @@ mod tests {
                 llm_tags_path: None,
             };
             assert!(
-                !classifier.is_high_confidence(&vec![], &input),
+                !classifier.is_high_confidence(&[], &input),
                 "Should NOT be high confidence for non-lifecycle trigger: {}",
                 trigger
             );
-        }
-    }
-
-    #[test]
-    fn test_config_error_handling() {
-        let classifier = Classifier::new(Config::default());
-
-        // Test with various invalid paths
-        let invalid_paths = vec![
-            "/nonexistent/directory/config.json",
-            "/tmp/invalid.txt",
-            "./not-a-file.json",
-        ];
-
-        for path in invalid_paths {
-            let input = ClassificationInput {
-                user_prompt: "".to_string(),
-                trigger: "user_request".to_string(),
-                git_context: None,
-                agent_config_path: Some(path.to_string()),
-                rules_config_path: None,
-                llm_tags_path: None,
-            };
-
-            let result = classifier.load_user_config(&input);
-            assert!(result.is_err(), "Should fail for invalid path: {}", path);
         }
     }
 }

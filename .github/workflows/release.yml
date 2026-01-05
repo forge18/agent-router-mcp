@@ -43,13 +43,13 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: agent-router-mcp
-            asset_name: agent-router-mcp-linux-x86_64
+            asset_name: agent-router-mcp-linux-amd64
 
           # Linux ARM64
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             artifact_name: agent-router-mcp
-            asset_name: agent-router-mcp-linux-aarch64
+            asset_name: agent-router-mcp-linux-arm64
 
           # macOS Intel
           - os: macos-latest
@@ -67,7 +67,13 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: agent-router-mcp.exe
-            asset_name: agent-router-mcp-windows-x86_64.exe
+            asset_name: agent-router-mcp-windows-amd64.exe
+
+          # Windows ARM64
+          - os: windows-latest
+            target: aarch64-pc-windows-gnullvm
+            artifact_name: agent-router-mcp.exe
+            asset_name: agent-router-mcp-windows-arm64.exe
 
     steps:
     - uses: actions/checkout@v6
@@ -148,3 +154,41 @@ jobs:
         asset_path: ./${{ matrix.asset_name }}.sha256
         asset_name: ${{ matrix.asset_name }}.sha256
         asset_content_type: text/plain
+
+  build-config-archives:
+    name: Build Config Archives
+    needs: create-release
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Create zip archive (Windows)
+      run: |
+        cd config
+        zip -r ../agent-router-mcp-config.zip agents.json llm-tags.json rules.json
+        cd ..
+
+    - name: Create tar.gz archive (macOS/Linux)
+      run: |
+        tar -czf agent-router-mcp-config.tar.gz -C config agents.json llm-tags.json rules.json
+
+    - name: Upload zip archive
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./agent-router-mcp-config.zip
+        asset_name: agent-router-mcp-config.zip
+        asset_content_type: application/zip
+
+    - name: Upload tar.gz archive
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./agent-router-mcp-config.tar.gz
+        asset_name: agent-router-mcp-config.tar.gz
+        asset_content_type: application/gzip

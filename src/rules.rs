@@ -2,8 +2,19 @@ use crate::types::*;
 use anyhow::{Context, Result};
 use glob::Pattern;
 use regex::Regex;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
+use tracing::warn;
+
+// Regex cache to avoid recompiling patterns on every evaluation
+type RegexCache = Arc<RwLock<HashMap<String, Result<Regex, String>>>>;
+
+// Global regex cache (thread-safe)
+lazy_static::lazy_static! {
+    static ref REGEX_CACHE: RegexCache = Arc::new(RwLock::new(HashMap::new()));
+}
 
 // Default config paths
 const DEFAULT_AGENTS_CONFIG: &str = "./config/agents.json";
@@ -58,6 +69,16 @@ pub fn load_user_config(path: &str) -> Result<UserConfig> {
             validated_path.display()
         )
     })?;
+
+    // Validate config content
+    config.validate().map_err(|e| {
+        anyhow::anyhow!(
+            "Invalid agent config in {}: {}",
+            validated_path.display(),
+            e
+        )
+    })?;
+
     Ok(config)
 }
 
@@ -82,6 +103,16 @@ pub fn load_llm_tag_config(path: &str) -> Result<LlmTagConfig> {
             validated_path.display()
         )
     })?;
+
+    // Validate config content
+    config.validate().map_err(|e| {
+        anyhow::anyhow!(
+            "Invalid LLM tag config in {}: {}",
+            validated_path.display(),
+            e
+        )
+    })?;
+
     Ok(config)
 }
 
@@ -106,12 +137,61 @@ pub fn load_rules_config(path: &str) -> Result<RulesConfig> {
             validated_path.display()
         )
     })?;
+
+    // Validate config content
+    config.validate().map_err(|e| {
+        anyhow::anyhow!(
+            "Invalid rules config in {}: {}",
+            validated_path.display(),
+            e
+        )
+    })?;
+
     Ok(config)
 }
 
 /// Load default rules configuration
 pub fn default_rules_config() -> Result<RulesConfig> {
     load_rules_config(DEFAULT_RULES_CONFIG)
+}
+
+/// Get or compile a regex pattern from cache
+fn get_compiled_regex(pattern: &str) -> Option<Regex> {
+    // Try to get from cache (read lock)
+    {
+        if let Ok(cache_read) = REGEX_CACHE.read() {
+            if let Some(cached) = cache_read.get(pattern) {
+                return match cached {
+                    Ok(re) => Some(re.clone()),
+                    Err(_) => None, // Pattern failed to compile before
+                };
+            }
+        }
+    }
+
+    // Not in cache, compile it (write lock)
+    let mut cache_write = REGEX_CACHE.write().ok()?;
+
+    // Double-check it wasn't added while we were waiting for write lock
+    if let Some(cached) = cache_write.get(pattern) {
+        return match cached {
+            Ok(re) => Some(re.clone()),
+            Err(_) => None,
+        };
+    }
+
+    // Compile and store in cache
+    match Regex::new(pattern) {
+        Ok(re) => {
+            cache_write.insert(pattern.to_string(), Ok(re.clone()));
+            Some(re)
+        }
+        Err(e) => {
+            warn!("Invalid regex pattern '{}': {}", pattern, e);
+            cache_write.insert(pattern.to_string(), Err(e.to_string()));
+            None
+        }
+    }
 }
 
 /// Apply rule-based classification (without LLM tags)
@@ -196,10 +276,14 @@ fn evaluate_condition(
     match condition {
         Condition::FilePattern(pattern) => {
             if let Some(git_ctx) = &input.git_context {
-                let glob_pattern = Pattern::new(pattern).unwrap_or_else(|_| {
-                    // If pattern is invalid, no match
-                    Pattern::new("").unwrap()
-                });
+                // If pattern is invalid, return false (no match)
+                let glob_pattern = match Pattern::new(pattern) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        warn!("Invalid glob pattern '{}': {}", pattern, e);
+                        return false;
+                    }
+                };
 
                 for file in &git_ctx.changed_files {
                     if glob_pattern.matches(file) {
@@ -211,7 +295,8 @@ fn evaluate_condition(
         }
         Condition::FileRegex(regex_pattern) => {
             if let Some(git_ctx) = &input.git_context {
-                if let Ok(re) = Regex::new(regex_pattern) {
+                // Use cached compiled regex
+                if let Some(re) = get_compiled_regex(regex_pattern) {
                     for file in &git_ctx.changed_files {
                         if re.is_match(file) {
                             return true;
@@ -222,15 +307,16 @@ fn evaluate_condition(
             false
         }
         Condition::PromptRegex(regex_pattern) => {
-            if let Ok(re) = Regex::new(regex_pattern) {
-                re.is_match(&input.user_prompt)
-            } else {
-                false
+            // Use cached compiled regex
+            if let Some(re) = get_compiled_regex(regex_pattern) {
+                return re.is_match(&input.user_prompt);
             }
+            false
         }
         Condition::BranchRegex(regex_pattern) => {
             if let Some(git_ctx) = &input.git_context {
-                if let Ok(re) = Regex::new(regex_pattern) {
+                // Use cached compiled regex
+                if let Some(re) = get_compiled_regex(regex_pattern) {
                     return re.is_match(&git_ctx.branch);
                 }
             }
