@@ -1,0 +1,25 @@
+# Rust
+/target/
+/dist/
+**/*.rs.bk
+# Note: Cargo.lock is tracked for binary crates but ignored for libraries
+# This is a binary crate, so we keep Cargo.lock in version control
+# Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Config overrides
+.env
+.env.local

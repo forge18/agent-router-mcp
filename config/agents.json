@@ -1,0 +1,84 @@
+{
+  "agents": [
+    {
+      "name": "security-auditor",
+      "description": "Reviews code for security vulnerabilities, secrets, supply chain attacks"
+    },
+    {
+      "name": "code-reviewer",
+      "description": "General code quality review, patterns, best practices"
+    },
+    {
+      "name": "language-reviewer-typescript",
+      "description": "TypeScript-specific patterns and best practices"
+    },
+    {
+      "name": "language-reviewer-rust",
+      "description": "Rust-specific patterns and best practices"
+    },
+    {
+      "name": "language-reviewer-python",
+      "description": "Python-specific patterns and best practices"
+    },
+    {
+      "name": "language-reviewer-javascript",
+      "description": "JavaScript-specific patterns and best practices"
+    },
+    {
+      "name": "language-reviewer-csharp",
+      "description": "C#-specific patterns and best practices"
+    },
+    {
+      "name": "language-reviewer-lua",
+      "description": "Lua-specific patterns and best practices"
+    },
+    {
+      "name": "language-reviewer-zig",
+      "description": "Zig-specific patterns and best practices"
+    },
+    {
+      "name": "language-reviewer-gdscript",
+      "description": "GDScript-specific patterns and best practices"
+    },
+    {
+      "name": "test-engineer-junior",
+      "description": "Simple unit tests"
+    },
+    {
+      "name": "test-engineer-midlevel",
+      "description": "Integration tests and test coverage"
+    },
+    {
+      "name": "test-engineer-senior",
+      "description": "Complex E2E tests, test architecture"
+    },
+    {
+      "name": "devops-engineer-junior",
+      "description": "Basic CI/CD workflows"
+    },
+    {
+      "name": "devops-engineer-midlevel",
+      "description": "Deployment configurations, containerization"
+    },
+    {
+      "name": "devops-engineer-senior",
+      "description": "Infrastructure design, deployment strategy"
+    },
+    {
+      "name": "planning-architect",
+      "description": "System design, architecture decisions"
+    },
+    {
+      "name": "documentation-writer",
+      "description": "Technical documentation, READMEs, API docs"
+    },
+    {
+      "name": "performance-optimizer",
+      "description": "Performance analysis and optimization"
+    },
+    {
+      "name": "accessibility-specialist",
+      "description": "Accessibility review (a11y)"
+    }
+  ]
+}

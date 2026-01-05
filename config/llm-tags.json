@@ -1,0 +1,65 @@
+{
+  "tags": [
+    {
+      "name": "security-concern",
+      "description": "Code that handles authentication, authorization, encryption, secrets, tokens, passwords, or any security-sensitive operations",
+      "examples": [
+        "JWT token generation",
+        "Password hashing",
+        "API key handling",
+        "SQL queries with user input",
+        "File upload handling",
+        "Session management"
+      ]
+    },
+    {
+      "name": "performance-critical",
+      "description": "Code that processes large amounts of data, runs in tight loops, or is performance-sensitive",
+      "examples": [
+        "Database queries in loops",
+        "Large array operations",
+        "Image/video processing",
+        "Real-time data processing"
+      ]
+    },
+    {
+      "name": "accessibility-concern",
+      "description": "UI code that affects user accessibility, screen readers, keyboard navigation, or ARIA attributes",
+      "examples": [
+        "Form inputs without labels",
+        "Interactive elements",
+        "Modal dialogs",
+        "Dynamic content updates"
+      ]
+    },
+    {
+      "name": "database-operation",
+      "description": "Code that interacts with databases, ORMs, or data persistence",
+      "examples": [
+        "SQL queries",
+        "ORM operations",
+        "Database migrations",
+        "Transaction handling"
+      ]
+    },
+    {
+      "name": "api-endpoint",
+      "description": "Code that defines or modifies API endpoints, routes, or HTTP handlers",
+      "examples": [
+        "REST API routes",
+        "GraphQL resolvers",
+        "HTTP request handlers"
+      ]
+    },
+    {
+      "name": "state-management",
+      "description": "Code that manages application state, stores, or reactive data",
+      "examples": [
+        "Redux actions/reducers",
+        "Zustand stores",
+        "React context",
+        "Vue/Svelte stores"
+      ]
+    }
+  ]
+}
