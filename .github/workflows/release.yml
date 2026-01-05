@@ -70,8 +70,11 @@ jobs:
             asset_name: agent-router-mcp-windows-amd64.exe
 
           # Windows ARM64
+          # Uses MSVC toolchain for CI builds (works on GitHub Actions)
+          # Local builds use gnullvm toolchain (scripts/build-all.sh)
+          # Both produce compatible Windows ARM64 binaries
           - os: windows-latest
-            target: aarch64-pc-windows-gnullvm
+            target: aarch64-pc-windows-msvc
             artifact_name: agent-router-mcp.exe
             asset_name: agent-router-mcp-windows-arm64.exe
 
