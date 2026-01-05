@@ -18,7 +18,8 @@ fn validate_config_path(path: &str) -> Result<PathBuf> {
     let path = Path::new(path);
 
     // Get the canonical path (resolves symlinks and removes .. components)
-    let canonical = path.canonicalize()
+    let canonical = path
+        .canonicalize()
         .with_context(|| format!("Failed to resolve path: {}", path.display()))?;
 
     // Security: Only allow .json files
@@ -45,10 +46,18 @@ fn validate_config_path(path: &str) -> Result<PathBuf> {
 pub fn load_user_config(path: &str) -> Result<UserConfig> {
     let validated_path = validate_config_path(path)?;
 
-    let content = fs::read_to_string(&validated_path)
-        .with_context(|| format!("Failed to read agent config from {}", validated_path.display()))?;
-    let config: UserConfig = serde_json::from_str(&content)
-        .with_context(|| format!("Failed to parse agent config from {}", validated_path.display()))?;
+    let content = fs::read_to_string(&validated_path).with_context(|| {
+        format!(
+            "Failed to read agent config from {}",
+            validated_path.display()
+        )
+    })?;
+    let config: UserConfig = serde_json::from_str(&content).with_context(|| {
+        format!(
+            "Failed to parse agent config from {}",
+            validated_path.display()
+        )
+    })?;
     Ok(config)
 }
 
@@ -61,10 +70,18 @@ pub fn default_user_config() -> Result<UserConfig> {
 pub fn load_llm_tag_config(path: &str) -> Result<LlmTagConfig> {
     let validated_path = validate_config_path(path)?;
 
-    let content = fs::read_to_string(&validated_path)
-        .with_context(|| format!("Failed to read LLM tag config from {}", validated_path.display()))?;
-    let config: LlmTagConfig = serde_json::from_str(&content)
-        .with_context(|| format!("Failed to parse LLM tag config from {}", validated_path.display()))?;
+    let content = fs::read_to_string(&validated_path).with_context(|| {
+        format!(
+            "Failed to read LLM tag config from {}",
+            validated_path.display()
+        )
+    })?;
+    let config: LlmTagConfig = serde_json::from_str(&content).with_context(|| {
+        format!(
+            "Failed to parse LLM tag config from {}",
+            validated_path.display()
+        )
+    })?;
     Ok(config)
 }
 
@@ -77,10 +94,18 @@ pub fn default_llm_tag_config() -> Result<LlmTagConfig> {
 pub fn load_rules_config(path: &str) -> Result<RulesConfig> {
     let validated_path = validate_config_path(path)?;
 
-    let content = fs::read_to_string(&validated_path)
-        .with_context(|| format!("Failed to read rules config from {}", validated_path.display()))?;
-    let config: RulesConfig = serde_json::from_str(&content)
-        .with_context(|| format!("Failed to parse rules config from {}", validated_path.display()))?;
+    let content = fs::read_to_string(&validated_path).with_context(|| {
+        format!(
+            "Failed to read rules config from {}",
+            validated_path.display()
+        )
+    })?;
+    let config: RulesConfig = serde_json::from_str(&content).with_context(|| {
+        format!(
+            "Failed to parse rules config from {}",
+            validated_path.display()
+        )
+    })?;
     Ok(config)
 }
 
@@ -153,12 +178,12 @@ fn evaluate_conditions(
 ) -> bool {
     match conditions {
         RuleConditions::Single(condition) => evaluate_condition(condition, input, llm_tags),
-        RuleConditions::AnyOf { any_of } => {
-            any_of.iter().any(|c| evaluate_conditions(c, input, llm_tags))
-        }
-        RuleConditions::AllOf { all_of } => {
-            all_of.iter().all(|c| evaluate_conditions(c, input, llm_tags))
-        }
+        RuleConditions::AnyOf { any_of } => any_of
+            .iter()
+            .any(|c| evaluate_conditions(c, input, llm_tags)),
+        RuleConditions::AllOf { all_of } => all_of
+            .iter()
+            .all(|c| evaluate_conditions(c, input, llm_tags)),
     }
 }
 
@@ -235,17 +260,23 @@ mod tests {
                 },
                 Rule {
                     description: Some("Security files".to_string()),
-                    conditions: RuleConditions::Single(Condition::FilePattern("*auth*".to_string())),
+                    conditions: RuleConditions::Single(Condition::FilePattern(
+                        "*auth*".to_string(),
+                    )),
                     route_to_subagents: vec!["security-auditor".to_string()],
                 },
                 Rule {
                     description: Some("Commit hook".to_string()),
-                    conditions: RuleConditions::Single(Condition::GitLifecycle("commit".to_string())),
+                    conditions: RuleConditions::Single(Condition::GitLifecycle(
+                        "commit".to_string(),
+                    )),
                     route_to_subagents: vec!["code-reviewer".to_string()],
                 },
                 Rule {
                     description: Some("Security tag".to_string()),
-                    conditions: RuleConditions::Single(Condition::LlmTag("security-concern".to_string())),
+                    conditions: RuleConditions::Single(Condition::LlmTag(
+                        "security-concern".to_string(),
+                    )),
                     route_to_subagents: vec!["security-auditor".to_string()],
                 },
             ],
@@ -345,7 +376,9 @@ mod tests {
         let rules = RulesConfig {
             rules: vec![Rule {
                 description: Some("Test files".to_string()),
-                conditions: RuleConditions::Single(Condition::FileRegex(r".*\.test\.ts$".to_string())),
+                conditions: RuleConditions::Single(Condition::FileRegex(
+                    r".*\.test\.ts$".to_string(),
+                )),
                 route_to_subagents: vec!["test-engineer".to_string()],
             }],
         };
@@ -372,7 +405,9 @@ mod tests {
         let rules = RulesConfig {
             rules: vec![Rule {
                 description: Some("Security prompts".to_string()),
-                conditions: RuleConditions::Single(Condition::PromptRegex(r"(?i)(security|auth|encrypt)".to_string())),
+                conditions: RuleConditions::Single(Condition::PromptRegex(
+                    r"(?i)(security|auth|encrypt)".to_string(),
+                )),
                 route_to_subagents: vec!["security-auditor".to_string()],
             }],
         };
@@ -395,7 +430,9 @@ mod tests {
         let rules = RulesConfig {
             rules: vec![Rule {
                 description: Some("Feature branches".to_string()),
-                conditions: RuleConditions::Single(Condition::BranchRegex(r"^feature/.*".to_string())),
+                conditions: RuleConditions::Single(Condition::BranchRegex(
+                    r"^feature/.*".to_string(),
+                )),
                 route_to_subagents: vec!["code-reviewer".to_string()],
             }],
         };
@@ -464,8 +501,12 @@ mod tests {
                         RuleConditions::Single(Condition::FilePattern("*auth*".to_string())),
                         RuleConditions::AllOf {
                             all_of: vec![
-                                RuleConditions::Single(Condition::PromptRegex("(?i)fix".to_string())),
-                                RuleConditions::Single(Condition::BranchRegex("^hotfix/.*".to_string())),
+                                RuleConditions::Single(Condition::PromptRegex(
+                                    "(?i)fix".to_string(),
+                                )),
+                                RuleConditions::Single(Condition::BranchRegex(
+                                    "^hotfix/.*".to_string(),
+                                )),
                             ],
                         },
                     ],
@@ -522,7 +563,9 @@ mod tests {
                 },
                 Rule {
                     description: Some("Commit hook".to_string()),
-                    conditions: RuleConditions::Single(Condition::GitLifecycle("commit".to_string())),
+                    conditions: RuleConditions::Single(Condition::GitLifecycle(
+                        "commit".to_string(),
+                    )),
                     route_to_subagents: vec!["code-reviewer".to_string()],
                 },
             ],
@@ -657,7 +700,9 @@ mod tests {
         let rules = RulesConfig {
             rules: vec![Rule {
                 description: Some("Config files".to_string()),
-                conditions: RuleConditions::Single(Condition::FilePattern("config/*.json".to_string())),
+                conditions: RuleConditions::Single(Condition::FilePattern(
+                    "config/*.json".to_string(),
+                )),
                 route_to_subagents: vec!["config-reviewer".to_string()],
             }],
         };
@@ -744,19 +789,21 @@ mod tests {
 
     #[test]
     fn test_config_file_too_large() {
+        use std::env;
         use std::fs;
         use std::io::Write;
 
         // Create a temporary config file that's too large
-        let temp_path = "/tmp/test_large_agents_config.json";
-        let mut file = fs::File::create(temp_path).unwrap();
+        let temp_dir = env::temp_dir();
+        let temp_path = temp_dir.join("test_large_agents_config.json");
+        let mut file = fs::File::create(&temp_path).unwrap();
         // Write 2MB of data (over the 1MB limit)
         let large_data = format!(r#"{{"agents": [{}]}}"#, "x".repeat(2_000_000));
         file.write_all(large_data.as_bytes()).unwrap();
         drop(file);
 
         // Try to load the oversized config - should fail
-        let result = load_user_config(temp_path);
+        let result = load_user_config(temp_path.to_str().unwrap());
         assert!(result.is_err());
         if let Err(e) = result {
             let error_msg = e.to_string();
@@ -764,7 +811,7 @@ mod tests {
         }
 
         // Cleanup
-        let _ = fs::remove_file(temp_path);
+        let _ = fs::remove_file(&temp_path);
     }
 
     #[test]
@@ -872,7 +919,9 @@ mod tests {
         let rules = RulesConfig {
             rules: vec![Rule {
                 description: Some("Branch regex".to_string()),
-                conditions: RuleConditions::Single(Condition::BranchRegex("^feature/.*".to_string())),
+                conditions: RuleConditions::Single(Condition::BranchRegex(
+                    "^feature/.*".to_string(),
+                )),
                 route_to_subagents: vec!["test-agent".to_string()],
             }],
         };

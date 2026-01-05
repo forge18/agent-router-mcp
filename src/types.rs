@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 // Security: Maximum input sizes to prevent DoS
-const MAX_PROMPT_LENGTH: usize = 10_000;  // 10KB
+const MAX_PROMPT_LENGTH: usize = 10_000; // 10KB
 const MAX_FILES_COUNT: usize = 100;
 const MAX_FILE_PATH_LENGTH: usize = 1_000;
 
@@ -116,33 +116,19 @@ pub struct AgentDefinition {
 pub struct Config {
     pub ollama_url: String,
     pub model_name: String,
-    #[deprecated(since = "0.1.0", note = "Auto-start is disabled for security. This field is ignored.")]
-    pub auto_start_ollama: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        let ollama_url = std::env::var("OLLAMA_URL")
-            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let ollama_url =
+            std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
         // Security: Validate that Ollama URL is localhost
         Self::validate_ollama_url(&ollama_url);
 
-        let auto_start = std::env::var("AUTO_START_OLLAMA")
-            .map(|v| v == "true")
-            .unwrap_or(false);
-
-        if auto_start {
-            eprintln!("⚠️  WARNING: AUTO_START_OLLAMA is deprecated and ignored for security.");
-            eprintln!("   Please start Ollama manually: ollama serve");
-        }
-
         Self {
             ollama_url,
-            model_name: std::env::var("MODEL_NAME")
-                .unwrap_or_else(|_| "smollm3:3b".to_string()),
-            #[allow(deprecated)]
-            auto_start_ollama: false,  // Always false for security
+            model_name: std::env::var("MODEL_NAME").unwrap_or_else(|_| "smollm3:3b".to_string()),
         }
     }
 }
@@ -213,6 +199,7 @@ pub enum Condition {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_valid_user_config() {
@@ -429,12 +416,10 @@ mod tests {
     #[test]
     fn test_classification_result_serialization() {
         let result = ClassificationResult {
-            agents: vec![
-                AgentRecommendation {
-                    name: "test-agent".to_string(),
-                    reason: "Test reason".to_string(),
-                },
-            ],
+            agents: vec![AgentRecommendation {
+                name: "test-agent".to_string(),
+                reason: "Test reason".to_string(),
+            }],
             reasoning: "Test reasoning".to_string(),
             method: "rules".to_string(),
             llm_tags: Some(vec!["tag1".to_string()]),
@@ -666,6 +651,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_config_default_values() {
         // Clear env vars if they exist
         std::env::remove_var("OLLAMA_URL");
@@ -777,6 +763,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_config_default_impl() {
         std::env::remove_var("OLLAMA_URL");
         std::env::remove_var("MODEL_NAME");
@@ -788,6 +775,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_config_with_env_vars() {
         std::env::set_var("OLLAMA_URL", "http://custom:8080");
         std::env::set_var("MODEL_NAME", "custom-model:1b");
@@ -802,6 +790,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_config_auto_start_ollama_warning() {
         // Test that AUTO_START_OLLAMA=true triggers the deprecation warning
         std::env::set_var("AUTO_START_OLLAMA", "true");

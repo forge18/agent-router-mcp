@@ -74,19 +74,6 @@ impl ModelManager {
         Ok(())
     }
 
-    pub async fn initialize_silent(&mut self) -> Result<()> {
-        if !self.check_ollama_running().await? {
-            anyhow::bail!("Ollama is not running");
-        }
-
-        if !self.check_model_exists().await? {
-            anyhow::bail!("Model '{}' not found", self.config.model_name);
-        }
-
-        info!("Model manager initialized (silent mode)");
-        Ok(())
-    }
-
     /// Step 1: LLM identifies semantic tags
     pub async fn identify_tags(
         &self,
@@ -131,7 +118,6 @@ impl ModelManager {
         input: &ClassificationInput,
         user_config: &UserConfig,
     ) -> Result<Vec<String>> {
-
         let prompt = self.build_prompt(input, user_config)?;
 
         let request = OllamaRequest {
@@ -187,9 +173,10 @@ impl ModelManager {
 
         let model_base = self.config.model_name.split(':').next().unwrap_or("");
 
-        Ok(data.models.iter().any(|m| {
-            m.name == self.config.model_name || m.name.starts_with(model_base)
-        }))
+        Ok(data
+            .models
+            .iter()
+            .any(|m| m.name == self.config.model_name || m.name.starts_with(model_base)))
     }
 
     pub async fn check_model_loaded(&self) -> Result<bool> {
@@ -212,9 +199,10 @@ impl ModelManager {
         let data: RunningModelsResponse = response.json().await?;
         let model_base = self.config.model_name.split(':').next().unwrap_or("");
 
-        Ok(data.models.iter().any(|m| {
-            m.name == self.config.model_name || m.name.starts_with(model_base)
-        }))
+        Ok(data
+            .models
+            .iter()
+            .any(|m| m.name == self.config.model_name || m.name.starts_with(model_base)))
     }
 
     pub async fn load_model(&self) -> Result<()> {
@@ -264,22 +252,11 @@ impl ModelManager {
         }
     }
 
-    pub async fn wait_for_ollama(&self, timeout_secs: u64) -> Result<()> {
-        let start = std::time::Instant::now();
-
-        while start.elapsed().as_secs() < timeout_secs {
-            if self.check_ollama_running().await? {
-                info!("Ollama is ready");
-                return Ok(());
-            }
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-
-        anyhow::bail!("Ollama failed to start within {} seconds", timeout_secs)
-    }
-
     pub async fn pull_model(&self, model_name: &str) -> Result<()> {
-        info!("Pulling model {}... (this may take a few minutes)", model_name);
+        info!(
+            "Pulling model {}... (this may take a few minutes)",
+            model_name
+        );
 
         let output = tokio::process::Command::new("ollama")
             .args(["pull", model_name])
@@ -304,8 +281,7 @@ impl ModelManager {
     /// Normalizes whitespace but preserves content
     fn sanitize_input(text: &str) -> String {
         // Only normalize excessive whitespace, don't truncate
-        text
-            .lines()
+        text.lines()
             .map(|line| line.trim())
             .filter(|line| !line.is_empty())
             .collect::<Vec<_>>()
@@ -373,7 +349,11 @@ Only output tags if you are confident they apply."#,
             .collect()
     }
 
-    fn build_prompt(&self, input: &ClassificationInput, user_config: &UserConfig) -> Result<String> {
+    fn build_prompt(
+        &self,
+        input: &ClassificationInput,
+        user_config: &UserConfig,
+    ) -> Result<String> {
         // Security: Sanitize user inputs (normalize whitespace)
         let sanitized_prompt = Self::sanitize_input(&input.user_prompt);
         let sanitized_trigger = Self::sanitize_input(&input.trigger);
@@ -444,7 +424,6 @@ mod tests {
         Config {
             model_name: "qwen2.5-coder:7b".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
-            auto_start_ollama: false,
         }
     }
 
@@ -709,7 +688,8 @@ mod tests {
         let manager = ModelManager::new(create_test_config());
         let tag_config = create_test_tag_config();
 
-        let response = "authentication\nExplanation: This is about auth\ndatabase\nNote: database operations";
+        let response =
+            "authentication\nExplanation: This is about auth\ndatabase\nNote: database operations";
         let result = manager.parse_tag_list(response, &tag_config);
 
         // Should only include tags without colons (no explanations)
@@ -850,8 +830,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_ollama_running_success() {
-        use wiremock::{MockServer, Mock, ResponseTemplate};
         use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
 

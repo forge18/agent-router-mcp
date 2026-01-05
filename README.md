@@ -155,6 +155,104 @@ Routing Result
   └─ Reasoning: "Clear rule-based matches"
 ```
 
+## MCP Tools
+
+The server exposes 4 tools for managing Ollama and getting routing instructions:
+
+### `get_routing`
+Get routing instructions for a user request. This is the main tool that performs intelligent routing.
+
+**Input:**
+```json
+{
+  "user_prompt": "Fix the authentication bug",
+  "trigger": "user_request",
+  "git_context": {
+    "branch": "main",
+    "changed_files": ["src/auth.ts"],
+    "staged_files": []
+  },
+  "agent_config_path": null,
+  "rules_config_path": null,
+  "llm_tags_path": null
+}
+```
+
+**Output (Success):**
+```json
+{
+  "agents": [
+    {
+      "name": "security-auditor",
+      "reason": "Matched file pattern or trigger"
+    },
+    {
+      "name": "language-reviewer-typescript",
+      "reason": "Matched file pattern or trigger"
+    }
+  ],
+  "reasoning": "Clear rule-based matches",
+  "method": "rules",
+  "llm_tags": null
+}
+```
+
+**Output (Prerequisites Not Met):**
+
+The tool performs automatic prerequisite checks and returns helpful error messages:
+
+```json
+{"error": "Ollama is not started. Ask user if Ollama should be started."}
+```
+```json
+{"error": "Model has not been downloaded. Ask user if the model should be pulled."}
+```
+```json
+{"error": "Model is not loaded. Ask the user if the model should be loaded in Ollama."}
+```
+
+When you receive these errors, call the appropriate tool (`start_ollama`, `pull_model`, or `load_model`).
+
+### `start_ollama`
+Start the Ollama service (useful if it's not already running).
+
+**Output:**
+```json
+{
+  "success": true,
+  "message": "Ollama started successfully"
+}
+```
+
+### `pull_model`
+Download a model from the Ollama registry.
+
+**Input:**
+```json
+{
+  "model_name": "smollm3:3b"
+}
+```
+
+**Output:**
+```json
+{
+  "success": true,
+  "message": "Model smollm3:3b pulled successfully"
+}
+```
+
+### `load_model`
+Pre-load the configured model into memory for faster first request.
+
+**Output:**
+```json
+{
+  "success": true,
+  "message": "Model smollm3:3b loaded successfully"
+}
+```
+
 ## Configuration Files
 
 All routing logic lives in `config/*.json` - edit these to customize behavior:
