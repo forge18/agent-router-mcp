@@ -1,5 +1,11 @@
 # Agent Router MCP
 
+![Alpha](https://img.shields.io/badge/status-alpha-orange)
+![Test Coverage](https://img.shields.io/badge/coverage-62%25-yellow)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
+> ⚠️ **Alpha Software** - This project is in early development. APIs and configuration formats may change. Not recommended for production use.
+
 A **stateless, config-driven** Model Context Protocol (MCP) server that intelligently routes requests to specialized AI subagents using a hybrid rule-based + LLM approach.
 
 ## Key Features
