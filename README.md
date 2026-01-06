@@ -1,10 +1,10 @@
 # Agent Router MCP
 
-![Beta](https://img.shields.io/badge/status-beta-blue)
+![Alpha](https://img.shields.io/badge/status-beta-yellow)
 ![Build Status](https://github.com/forge18/agent-router-mcp/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-> ⚠️ **Beta Software** - This project is in active development. APIs and configuration formats may change. Use with caution in production environments.
+> ⚠️ **Alpha Software** - This project is in active development. It is not advised to use the MCP server for more than basic testing at this time.
 
 A **stateless, config-driven** Model Context Protocol (MCP) server that intelligently routes requests to specialized AI subagents using a hybrid rule-based + LLM approach.
 
