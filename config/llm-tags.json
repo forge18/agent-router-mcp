@@ -1,6 +1,28 @@
 {
   "tags": [
     {
+      "name": "commit-review",
+      "description": "Intent indicates preparing for a commit, pre-commit review, or finalizing changes before pushing",
+      "examples": [
+        "review before commit",
+        "pre-commit check",
+        "prepare for commit",
+        "finalize changes",
+        "ready to commit"
+      ]
+    },
+    {
+      "name": "pull-request",
+      "description": "Intent indicates preparing a pull request, code review for PR, or merging changes",
+      "examples": [
+        "create pull request",
+        "prepare PR",
+        "review for merge",
+        "PR feedback",
+        "ready for review"
+      ]
+    },
+    {
       "name": "security-concern",
       "description": "Code that handles authentication, authorization, encryption, secrets, tokens, passwords, or any security-sensitive operations",
       "examples": [

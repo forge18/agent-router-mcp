@@ -2,83 +2,118 @@
   "agents": [
     {
       "name": "security-auditor",
-      "description": "Reviews code for security vulnerabilities, secrets, supply chain attacks"
+      "description": "Reviews code for security vulnerabilities, secrets, supply chain attacks",
+      "instructions": "Focus on OWASP Top 10 vulnerabilities, credential exposure, and input validation. Flag any hardcoded secrets or unsafe deserialization.",
+      "priority": 90
     },
     {
       "name": "code-reviewer",
-      "description": "General code quality review, patterns, best practices"
+      "description": "General code quality review, patterns, best practices",
+      "instructions": "Review for code clarity, maintainability, and adherence to project conventions. Suggest refactoring opportunities.",
+      "priority": 50
     },
     {
       "name": "language-reviewer-typescript",
-      "description": "TypeScript-specific patterns and best practices"
+      "description": "TypeScript-specific patterns and best practices",
+      "instructions": "Check type safety, avoid 'any' types, ensure proper null handling, and verify tsconfig compliance.",
+      "priority": 60
     },
     {
       "name": "language-reviewer-rust",
-      "description": "Rust-specific patterns and best practices"
+      "description": "Rust-specific patterns and best practices",
+      "instructions": "Review for ownership/borrowing issues, proper error handling with Result types, and idiomatic Rust patterns.",
+      "priority": 60
     },
     {
       "name": "language-reviewer-python",
-      "description": "Python-specific patterns and best practices"
+      "description": "Python-specific patterns and best practices",
+      "instructions": "Check PEP 8 compliance, type hints, and proper exception handling. Avoid mutable default arguments.",
+      "priority": 60
     },
     {
       "name": "language-reviewer-javascript",
-      "description": "JavaScript-specific patterns and best practices"
+      "description": "JavaScript-specific patterns and best practices",
+      "instructions": "Review for proper async/await usage, avoid callback hell, check for memory leaks in event handlers.",
+      "priority": 60
     },
     {
       "name": "language-reviewer-csharp",
-      "description": "C#-specific patterns and best practices"
+      "description": "C#-specific patterns and best practices",
+      "instructions": "Check for proper IDisposable usage, async/await patterns, and null reference handling.",
+      "priority": 60
     },
     {
       "name": "language-reviewer-lua",
-      "description": "Lua-specific patterns and best practices"
+      "description": "Lua-specific patterns and best practices",
+      "priority": 60
     },
     {
       "name": "language-reviewer-zig",
-      "description": "Zig-specific patterns and best practices"
+      "description": "Zig-specific patterns and best practices",
+      "priority": 60
     },
     {
       "name": "language-reviewer-gdscript",
-      "description": "GDScript-specific patterns and best practices"
+      "description": "GDScript-specific patterns and best practices",
+      "priority": 60
     },
     {
       "name": "test-engineer-junior",
-      "description": "Simple unit tests"
+      "description": "Simple unit tests",
+      "instructions": "Write focused unit tests for individual functions. Use arrange-act-assert pattern.",
+      "priority": 40
     },
     {
       "name": "test-engineer-midlevel",
-      "description": "Integration tests and test coverage"
+      "description": "Integration tests and test coverage",
+      "instructions": "Write integration tests that verify component interactions. Aim for 80%+ code coverage.",
+      "priority": 50
     },
     {
       "name": "test-engineer-senior",
-      "description": "Complex E2E tests, test architecture"
+      "description": "Complex E2E tests, test architecture",
+      "instructions": "Design comprehensive E2E test suites. Consider edge cases, race conditions, and failure modes.",
+      "priority": 70
     },
     {
       "name": "devops-engineer-junior",
-      "description": "Basic CI/CD workflows"
+      "description": "Basic CI/CD workflows",
+      "priority": 40
     },
     {
       "name": "devops-engineer-midlevel",
-      "description": "Deployment configurations, containerization"
+      "description": "Deployment configurations, containerization",
+      "priority": 50
     },
     {
       "name": "devops-engineer-senior",
-      "description": "Infrastructure design, deployment strategy"
+      "description": "Infrastructure design, deployment strategy",
+      "instructions": "Design for high availability, scalability, and disaster recovery. Document infrastructure decisions.",
+      "priority": 70
     },
     {
       "name": "planning-architect",
-      "description": "System design, architecture decisions"
+      "description": "System design, architecture decisions",
+      "instructions": "Consider scalability, maintainability, and technical debt. Document trade-offs and alternatives considered.",
+      "priority": 80
     },
     {
       "name": "documentation-writer",
-      "description": "Technical documentation, READMEs, API docs"
+      "description": "Technical documentation, READMEs, API docs",
+      "instructions": "Write clear, concise documentation with examples. Keep docs in sync with code changes.",
+      "priority": 40
     },
     {
       "name": "performance-optimizer",
-      "description": "Performance analysis and optimization"
+      "description": "Performance analysis and optimization",
+      "instructions": "Profile before optimizing. Focus on hot paths and algorithmic complexity. Measure improvements.",
+      "priority": 60
     },
     {
       "name": "accessibility-specialist",
-      "description": "Accessibility review (a11y)"
+      "description": "Accessibility review (a11y)",
+      "instructions": "Ensure WCAG 2.1 AA compliance. Check for screen reader compatibility, keyboard navigation, and color contrast.",
+      "priority": 70
     }
   ]
 }
