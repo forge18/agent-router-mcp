@@ -12,9 +12,13 @@ async fn main() -> SdkResult<()> {
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter("agent_router_mcp=info")
+        .with_ansi(false)
+        .without_time()
+        .with_target(false)
+        .with_level(false)
         .init();
 
-    info!("Starting Agent Router MCP Server");
+    info!("Starting server...");
 
     // Server info
     let server_details = InitializeResult {
@@ -55,7 +59,7 @@ async fn main() -> SdkResult<()> {
     // Create and start server
     let server = server_runtime::create_server(options);
 
-    info!("MCP server ready - listening on stdio");
+    info!("Server ready");
 
     server.start().await
 }

@@ -63,65 +63,6 @@
       "route_to_subagents": ["language-reviewer-gdscript"]
     },
     {
-      "description": "Security-sensitive file patterns",
-      "conditions": {
-        "any_of": [
-          {"file_pattern": "*auth*"},
-          {"file_pattern": "*password*"},
-          {"file_pattern": "*crypto*"},
-          {"file_pattern": "*secret*"},
-          {"file_pattern": "*token*"},
-          {"file_pattern": "*jwt*"},
-          {"file_pattern": "*session*"},
-          {"file_pattern": "*key*"},
-          {"file_pattern": "*credential*"}
-        ]
-      },
-      "route_to_subagents": ["security-auditor"]
-    },
-    {
-      "description": "Git commit hooks",
-      "conditions": {
-        "any_of": [
-          {"git_lifecycle": "commit"},
-          {"git_lifecycle": "pre-commit"},
-          {"git_lifecycle": "pull_request"}
-        ]
-      },
-      "route_to_subagents": ["code-reviewer"]
-    },
-    {
-      "description": "Test-related prompts",
-      "conditions": {
-        "any_of": [
-          {"prompt_regex": "(?i)test"},
-          {"prompt_regex": "(?i)testing"},
-          {"prompt_regex": "(?i)coverage"}
-        ]
-      },
-      "route_to_subagents": ["test-engineer-midlevel"]
-    },
-    {
-      "description": "E2E test prompts",
-      "conditions": {
-        "any_of": [
-          {"prompt_regex": "(?i)e2e"},
-          {"prompt_regex": "(?i)end-to-end"}
-        ]
-      },
-      "route_to_subagents": ["test-engineer-senior"]
-    },
-    {
-      "description": "Deployment prompts",
-      "conditions": {
-        "any_of": [
-          {"prompt_regex": "(?i)deploy"},
-          {"prompt_regex": "(?i)deployment"}
-        ]
-      },
-      "route_to_subagents": ["devops-engineer-senior"]
-    },
-    {
       "description": "CI/CD workflow files",
       "conditions": {
         "any_of": [
@@ -154,18 +95,6 @@
       "route_to_subagents": ["devops-engineer-senior"]
     },
     {
-      "description": "Architecture and design prompts",
-      "conditions": {
-        "any_of": [
-          {"prompt_regex": "(?i)architecture"},
-          {"prompt_regex": "(?i)design"},
-          {"prompt_regex": "(?i)plan"},
-          {"prompt_regex": "(?i)structure"}
-        ]
-      },
-      "route_to_subagents": ["planning-architect"]
-    },
-    {
       "description": "Documentation files",
       "conditions": {
         "any_of": [
@@ -175,42 +104,6 @@
         ]
       },
       "route_to_subagents": ["documentation-writer"]
-    },
-    {
-      "description": "Documentation prompts",
-      "conditions": {
-        "any_of": [
-          {"prompt_regex": "(?i)document"},
-          {"prompt_regex": "(?i)docs"},
-          {"prompt_regex": "(?i)readme"}
-        ]
-      },
-      "route_to_subagents": ["documentation-writer"]
-    },
-    {
-      "description": "Performance optimization prompts",
-      "conditions": {
-        "any_of": [
-          {"prompt_regex": "(?i)performance"},
-          {"prompt_regex": "(?i)optimize"},
-          {"prompt_regex": "(?i)slow"},
-          {"prompt_regex": "(?i)speed"},
-          {"prompt_regex": "(?i)benchmark"}
-        ]
-      },
-      "route_to_subagents": ["performance-optimizer"]
-    },
-    {
-      "description": "Accessibility prompts",
-      "conditions": {
-        "any_of": [
-          {"prompt_regex": "(?i)accessibility"},
-          {"prompt_regex": "(?i)a11y"},
-          {"prompt_regex": "(?i)wcag"},
-          {"prompt_regex": "(?i)aria"}
-        ]
-      },
-      "route_to_subagents": ["accessibility-specialist"]
     },
     {
       "description": "Security concern tag",
@@ -251,6 +144,20 @@
       "description": "State management tag",
       "conditions": {
         "llm_tag": "state-management"
+      },
+      "route_to_subagents": ["code-reviewer"]
+    },
+    {
+      "description": "Commit review tag",
+      "conditions": {
+        "llm_tag": "commit-review"
+      },
+      "route_to_subagents": ["code-reviewer"]
+    },
+    {
+      "description": "Pull request tag",
+      "conditions": {
+        "llm_tag": "pull-request"
       },
       "route_to_subagents": ["code-reviewer"]
     }

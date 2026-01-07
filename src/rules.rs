@@ -220,8 +220,10 @@ pub fn apply_llm_tag_rules(llm_tags: &[String], rules_config: &RulesConfig) -> V
         if rule_contains_llm_tags(&rule.conditions) {
             // Create a minimal input for evaluation (only tags matter)
             let dummy_input = ClassificationInput {
-                user_prompt: String::new(),
-                trigger: String::new(),
+                task: String::new(),
+                intent: String::new(),
+                original_prompt: None,
+                associated_files: None,
                 git_context: None,
                 agent_config_path: None,
                 rules_config_path: None,
@@ -267,6 +269,78 @@ fn evaluate_conditions(
     }
 }
 
+/// Get files to evaluate against - ONLY uses associated_files, never git context
+pub fn get_files_for_evaluation(input: &ClassificationInput) -> Vec<String> {
+    // Only use explicitly provided associated_files
+    // Git context is only for branch information, not file detection
+    if let Some(ref files) = input.associated_files {
+        return files.clone();
+    }
+    vec![]
+}
+
+/// Evaluate file pattern condition - public for use by classifier
+pub fn evaluate_file_pattern(pattern: &str, input: &ClassificationInput) -> bool {
+    let files = get_files_for_evaluation(input);
+    if files.is_empty() {
+        return false;
+    }
+    let glob_pattern = match Pattern::new(pattern) {
+        Ok(p) => p,
+        Err(e) => {
+            warn!("Invalid glob pattern '{}': {}", pattern, e);
+            return false;
+        }
+    };
+    for file in &files {
+        if glob_pattern.matches(file) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Evaluate file regex condition - public for use by classifier
+pub fn evaluate_file_regex(pattern: &str, input: &ClassificationInput) -> bool {
+    let files = get_files_for_evaluation(input);
+    if files.is_empty() {
+        return false;
+    }
+    if let Some(re) = get_compiled_regex(pattern) {
+        for file in &files {
+            if re.is_match(file) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Evaluate prompt regex condition - public for use by classifier
+pub fn evaluate_prompt_regex(pattern: &str, input: &ClassificationInput) -> bool {
+    if let Some(re) = get_compiled_regex(pattern) {
+        if re.is_match(&input.task) || re.is_match(&input.intent) {
+            return true;
+        }
+        if let Some(ref prompt) = input.original_prompt {
+            if re.is_match(prompt) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Evaluate branch regex condition - public for use by classifier
+pub fn evaluate_branch_regex(pattern: &str, input: &ClassificationInput) -> bool {
+    if let Some(git_ctx) = &input.git_context {
+        if let Some(re) = get_compiled_regex(pattern) {
+            return re.is_match(&git_ctx.branch);
+        }
+    }
+    false
+}
+
 /// Evaluate a single condition
 fn evaluate_condition(
     condition: &Condition,
@@ -275,41 +349,52 @@ fn evaluate_condition(
 ) -> bool {
     match condition {
         Condition::FilePattern(pattern) => {
-            if let Some(git_ctx) = &input.git_context {
-                // If pattern is invalid, return false (no match)
-                let glob_pattern = match Pattern::new(pattern) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        warn!("Invalid glob pattern '{}': {}", pattern, e);
-                        return false;
-                    }
-                };
+            let files = get_files_for_evaluation(input);
+            if files.is_empty() {
+                return false;
+            }
+            // If pattern is invalid, return false (no match)
+            let glob_pattern = match Pattern::new(pattern) {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("Invalid glob pattern '{}': {}", pattern, e);
+                    return false;
+                }
+            };
 
-                for file in &git_ctx.changed_files {
-                    if glob_pattern.matches(file) {
+            for file in &files {
+                if glob_pattern.matches(file) {
+                    return true;
+                }
+            }
+            false
+        }
+        Condition::FileRegex(regex_pattern) => {
+            let files = get_files_for_evaluation(input);
+            if files.is_empty() {
+                return false;
+            }
+            // Use cached compiled regex
+            if let Some(re) = get_compiled_regex(regex_pattern) {
+                for file in &files {
+                    if re.is_match(file) {
                         return true;
                     }
                 }
             }
             false
         }
-        Condition::FileRegex(regex_pattern) => {
-            if let Some(git_ctx) = &input.git_context {
-                // Use cached compiled regex
-                if let Some(re) = get_compiled_regex(regex_pattern) {
-                    for file in &git_ctx.changed_files {
-                        if re.is_match(file) {
-                            return true;
-                        }
+        Condition::PromptRegex(regex_pattern) => {
+            // Check task, intent, and original_prompt
+            if let Some(re) = get_compiled_regex(regex_pattern) {
+                if re.is_match(&input.task) || re.is_match(&input.intent) {
+                    return true;
+                }
+                if let Some(ref prompt) = input.original_prompt {
+                    if re.is_match(prompt) {
+                        return true;
                     }
                 }
-            }
-            false
-        }
-        Condition::PromptRegex(regex_pattern) => {
-            // Use cached compiled regex
-            if let Some(re) = get_compiled_regex(regex_pattern) {
-                return re.is_match(&input.user_prompt);
             }
             false
         }
@@ -322,7 +407,6 @@ fn evaluate_condition(
             }
             false
         }
-        Condition::GitLifecycle(trigger) => input.trigger == *trigger,
         Condition::LlmTag(tag) => llm_tags.contains(tag),
     }
 }
@@ -330,6 +414,33 @@ fn evaluate_condition(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Helper to create a test ClassificationInput with the new API
+    fn create_test_input(
+        task: &str,
+        intent: &str,
+        files: Option<Vec<String>>,
+        branch: Option<&str>,
+    ) -> ClassificationInput {
+        // Git context only provides branch info, not files
+        let git_context = branch.map(|b| GitContext {
+            branch: b.to_string(),
+            changed_files: vec![], // Files come from associated_files, not git context
+            staged_files: vec![],
+            tag: None,
+        });
+
+        ClassificationInput {
+            task: task.to_string(),
+            intent: intent.to_string(),
+            original_prompt: None,
+            associated_files: files,
+            git_context,
+            agent_config_path: None,
+            rules_config_path: None,
+            llm_tags_path: None,
+        }
+    }
 
     fn create_test_rules_config() -> RulesConfig {
         RulesConfig {
@@ -352,13 +463,6 @@ mod tests {
                     route_to_subagents: vec!["security-auditor".to_string()],
                 },
                 Rule {
-                    description: Some("Commit hook".to_string()),
-                    conditions: RuleConditions::Single(Condition::GitLifecycle(
-                        "commit".to_string(),
-                    )),
-                    route_to_subagents: vec!["code-reviewer".to_string()],
-                },
-                Rule {
                     description: Some("Security tag".to_string()),
                     conditions: RuleConditions::Single(Condition::LlmTag(
                         "security-concern".to_string(),
@@ -372,18 +476,12 @@ mod tests {
     #[test]
     fn test_typescript_file_pattern() {
         let rules = create_test_rules_config();
-        let input = ClassificationInput {
-            user_prompt: "Fix bug".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(),
-                changed_files: vec!["src/app.ts".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Fix bug",
+            "help with task",
+            Some(vec!["src/app.ts".to_string()]),
+            Some("main"),
+        );
 
         let agents = apply_rules(&input, &rules);
         assert!(agents.contains(&"language-reviewer-typescript".to_string()));
@@ -392,37 +490,15 @@ mod tests {
     #[test]
     fn test_security_file_pattern() {
         let rules = create_test_rules_config();
-        let input = ClassificationInput {
-            user_prompt: "Update auth".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(),
-                changed_files: vec!["src/auth.rs".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Update auth",
+            "help with task",
+            Some(vec!["src/auth.rs".to_string()]),
+            Some("main"),
+        );
 
         let agents = apply_rules(&input, &rules);
         assert!(agents.contains(&"security-auditor".to_string()));
-    }
-
-    #[test]
-    fn test_git_lifecycle_trigger() {
-        let rules = create_test_rules_config();
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "commit".to_string(),
-            git_context: None,
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
-
-        let agents = apply_rules(&input, &rules);
-        assert!(agents.contains(&"code-reviewer".to_string()));
     }
 
     #[test]
@@ -437,24 +513,18 @@ mod tests {
     #[test]
     fn test_multiple_matches() {
         let rules = create_test_rules_config();
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "commit".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(),
-                changed_files: vec!["src/auth.ts".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        // Test with files that trigger multiple rules
+        let input = create_test_input(
+            "Review code",
+            "help with task",
+            Some(vec!["src/auth.ts".to_string()]),
+            Some("main"),
+        );
 
         let agents = apply_rules(&input, &rules);
-        // Should match TypeScript, security, and commit hook
+        // Should match TypeScript and security (auth pattern)
         assert!(agents.contains(&"language-reviewer-typescript".to_string()));
         assert!(agents.contains(&"security-auditor".to_string()));
-        assert!(agents.contains(&"code-reviewer".to_string()));
     }
 
     #[test]
@@ -469,18 +539,12 @@ mod tests {
             }],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(),
-                changed_files: vec!["src/app.test.ts".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Run tests",
+            "help with task",
+            Some(vec!["src/app.test.ts".to_string()]),
+            Some("main"),
+        );
 
         let agents = apply_rules(&input, &rules);
         assert!(agents.contains(&"test-engineer".to_string()));
@@ -498,14 +562,8 @@ mod tests {
             }],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "Fix the AUTHENTICATION bug".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: None,
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        // PromptRegex now matches against task, intent, or original_prompt
+        let input = create_test_input("Fix the AUTHENTICATION bug", "help with task", None, None);
 
         let agents = apply_rules(&input, &rules);
         assert!(agents.contains(&"security-auditor".to_string()));
@@ -523,18 +581,12 @@ mod tests {
             }],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "feature/add-login".to_string(),
-                changed_files: vec![],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Work on feature",
+            "help with task",
+            None,
+            Some("feature/add-login"),
+        );
 
         let agents = apply_rules(&input, &rules);
         assert!(agents.contains(&"code-reviewer".to_string()));
@@ -560,18 +612,12 @@ mod tests {
             }],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(),
-                changed_files: vec!["app.tsx".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Work on component",
+            "help with task",
+            Some(vec!["app.tsx".to_string()]),
+            Some("main"),
+        );
 
         let agents = apply_rules(&input, &rules);
         assert!(agents.contains(&"language-reviewer".to_string()));
@@ -601,18 +647,12 @@ mod tests {
             }],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "Fix the bug".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "hotfix/auth-bug".to_string(),
-                changed_files: vec!["auth.ts".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Fix the bug",
+            "help with task",
+            Some(vec!["auth.ts".to_string()]),
+            Some("hotfix/auth-bug"),
+        );
 
         let agents = apply_rules(&input, &rules);
         assert!(agents.contains(&"security-auditor".to_string()));
@@ -621,18 +661,12 @@ mod tests {
     #[test]
     fn test_no_matches() {
         let rules = create_test_rules_config();
-        let input = ClassificationInput {
-            user_prompt: "Random task".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(),
-                changed_files: vec!["README.md".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Random task",
+            "general help",
+            Some(vec!["README.md".to_string()]),
+            Some("main"),
+        );
 
         let agents = apply_rules(&input, &rules);
         assert!(agents.is_empty());
@@ -648,27 +682,19 @@ mod tests {
                     route_to_subagents: vec!["code-reviewer".to_string()],
                 },
                 Rule {
-                    description: Some("Commit hook".to_string()),
-                    conditions: RuleConditions::Single(Condition::GitLifecycle(
-                        "commit".to_string(),
-                    )),
+                    description: Some("JavaScript".to_string()),
+                    conditions: RuleConditions::Single(Condition::FilePattern("*.js".to_string())),
                     route_to_subagents: vec!["code-reviewer".to_string()],
                 },
             ],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "commit".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(),
-                changed_files: vec!["app.ts".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Review code",
+            "help with task",
+            Some(vec!["app.ts".to_string(), "app.js".to_string()]),
+            Some("main"),
+        );
 
         let agents = apply_rules(&input, &rules);
         // Should deduplicate to one agent
@@ -685,19 +711,12 @@ mod tests {
             }],
         };
 
-        // Test with changed files
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(),
-                changed_files: vec!["main.py".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Work on Python",
+            "help with task",
+            Some(vec!["main.py".to_string()]),
+            Some("main"),
+        );
 
         let agents = apply_rules(&input, &rules);
         assert!(agents.contains(&"python-reviewer".to_string()));
@@ -706,17 +725,10 @@ mod tests {
     #[test]
     fn test_empty_git_context() {
         let rules = create_test_rules_config();
-        let input = ClassificationInput {
-            user_prompt: "Do something".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: None,
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input("Do something", "general help", None, None);
 
         let agents = apply_rules(&input, &rules);
-        // Should not match file-based rules without git context
+        // Should not match file-based rules without files
         assert!(!agents.contains(&"language-reviewer-typescript".to_string()));
         assert!(!agents.contains(&"security-auditor".to_string()));
     }
@@ -736,18 +748,12 @@ mod tests {
             }],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(), // Does not match feature/* regex
-                changed_files: vec!["app.ts".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Work on code",
+            "help with task",
+            Some(vec!["app.ts".to_string()]),
+            Some("main"), // Does not match feature/* regex
+        );
 
         let agents = apply_rules(&input, &rules);
         assert!(!agents.contains(&"ts-reviewer".to_string()));
@@ -763,18 +769,12 @@ mod tests {
             }],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(),
-                changed_files: vec!["test.txt".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Test task",
+            "help with task",
+            Some(vec!["test.txt".to_string()]),
+            Some("main"),
+        );
 
         // Should not panic, just not match
         let agents = apply_rules(&input, &rules);
@@ -793,18 +793,12 @@ mod tests {
             }],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(),
-                changed_files: vec!["config/agents.json".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Update config",
+            "help with task",
+            Some(vec!["config/agents.json".to_string()]),
+            Some("main"),
+        );
 
         let agents = apply_rules(&input, &rules);
         assert!(agents.contains(&"config-reviewer".to_string()));
@@ -922,32 +916,8 @@ mod tests {
     }
 
     #[test]
-    fn test_git_lifecycle_no_match() {
-        let rules = RulesConfig {
-            rules: vec![Rule {
-                description: Some("Commit lifecycle".to_string()),
-                conditions: RuleConditions::Single(Condition::GitLifecycle("commit".to_string())),
-                route_to_subagents: vec!["commit-agent".to_string()],
-            }],
-        };
-
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(), // Not a lifecycle trigger
-            git_context: None,
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
-
-        let agents = apply_rules(&input, &rules);
-        // Should not match since trigger is not "commit"
-        assert!(!agents.contains(&"commit-agent".to_string()));
-    }
-
-    #[test]
     fn test_invalid_glob_pattern() {
-        // Test line 176: invalid glob pattern fallback
+        // Test invalid glob pattern fallback
         let rules = RulesConfig {
             rules: vec![Rule {
                 description: Some("Invalid glob".to_string()),
@@ -956,18 +926,12 @@ mod tests {
             }],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: Some(GitContext {
-                branch: "main".to_string(),
-                changed_files: vec!["test.rs".to_string()],
-                staged_files: vec![],
-            }),
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Test task",
+            "help with task",
+            Some(vec!["test.rs".to_string()]),
+            Some("main"),
+        );
 
         let agents = apply_rules(&input, &rules);
         // Should not match due to invalid pattern
@@ -976,7 +940,7 @@ mod tests {
 
     #[test]
     fn test_invalid_prompt_regex() {
-        // Test line 203: invalid regex returns false
+        // Test invalid regex returns false
         let rules = RulesConfig {
             rules: vec![Rule {
                 description: Some("Invalid regex".to_string()),
@@ -985,14 +949,7 @@ mod tests {
             }],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "test prompt".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: None,
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input("test prompt", "help with task", None, None);
 
         let agents = apply_rules(&input, &rules);
         // Should not match due to invalid regex
@@ -1001,7 +958,7 @@ mod tests {
 
     #[test]
     fn test_branch_regex_no_git_context() {
-        // Test line 212: branch regex with no git context
+        // Test branch regex with no git context
         let rules = RulesConfig {
             rules: vec![Rule {
                 description: Some("Branch regex".to_string()),
@@ -1012,14 +969,12 @@ mod tests {
             }],
         };
 
-        let input = ClassificationInput {
-            user_prompt: "".to_string(),
-            trigger: "user_request".to_string(),
-            git_context: None, // No git context
-            agent_config_path: None,
-            rules_config_path: None,
-            llm_tags_path: None,
-        };
+        let input = create_test_input(
+            "Test task",
+            "help with task",
+            None,
+            None, // No git context
+        );
 
         let agents = apply_rules(&input, &rules);
         // Should not match since there's no git context
