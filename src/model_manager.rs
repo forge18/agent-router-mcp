@@ -757,7 +757,7 @@ mod tests {
 
         let result = manager.check_model_name_valid("").await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
     }
 
     #[tokio::test]
