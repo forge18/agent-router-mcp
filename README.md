@@ -278,13 +278,10 @@ When you receive these errors, call `init_llm` first.
 
 1. **Stateless**: No state maintained between requests
 2. **Config Loading**: Loads `agents.json`, `rules.json`, `llm-tags.json` on startup
-3. **Git Context**: Auto-detects branch, changed files, and staged files from current directory
-4. **Rule Matching**: Evaluates all rules against files and branches
-5. **High Confidence Check**: If clear file matches found, returns immediately
-6. **LLM Tagging**: Analyzes **task, intent, and original_prompt** to identify semantic tags
-7. **Tag Rules**: Applies tag-based rules to get additional agents
-8. **LLM Fallback**: If still no matches, asks LLM to directly classify
-9. **Return**: JSON result with agent names and routing reasoning
+3. **Git Context**: Auto-detects branch from current directory (for branch-based rules)
+4. **LLM Tagging**: Analyzes **task, intent, and original_prompt** to identify semantic tags
+5. **Rule Matching**: Evaluates ALL rules (file patterns, regex, branch patterns, AND tag-based)
+6. **Return**: JSON result with routing instructions (empty result is valid if no rules match)
 
 ---
 
@@ -371,6 +368,7 @@ Define routing rules with boolean logic:
 **Supported Conditions:**
 - `file_pattern` - Glob match on file paths (e.g., `*.ts`, `*auth*`)
 - `file_regex` - Regex match on file paths
+- `prompt_regex` - Regex match on task, intent, or original_prompt
 - `branch_regex` - Regex match on git branch name
 - `llm_tag` - Match LLM-identified semantic tags (LLM analyzes task, intent, and original_prompt)
 
@@ -574,7 +572,7 @@ Agent Call
   ├─ Task: "Fix auth bug"
   ├─ Intent: "review code before commit"
   ├─ Original Prompt: "Can you fix the login issue?" (optional)
-  └─ Files: src/auth.ts (auto-detected from git)
+  └─ Associated Files: ["src/auth.ts"] (provided by caller)
        ↓
 ┌──────────────────────────────────────────────────┐
 │  Agent Router MCP (Stateless Router)             │
@@ -585,23 +583,22 @@ Agent Call
 │     • llm-tags.json (semantic tags)              │
 │                                                  │
 │  2. Auto-Detect Git Context                      │
-│     • Branch, changed files, staged files        │
+│     • Branch only (for branch-based rules)       │
 │                                                  │
-│  3. Apply Rule-Based Matching                    │
-│     • *.ts → language-reviewer-typescript        │
-│     • *auth* → security-auditor                  │
-│                                                  │
-│  4. LLM Semantic Tagging (if needed)             │
+│  3. LLM Semantic Tagging                         │
 │     • Analyzes task + intent + original_prompt   │
 │     • Returns: ["security-concern",              │
 │                 "commit-review"]                 │
 │                                                  │
-│  5. Apply Tag-Based Rules                        │
-│     • security-concern → security-auditor        │
-│     • commit-review → code-reviewer              │
+│  4. Apply ALL Rules                              │
+│     • File patterns: *.ts → ts-reviewer          │
+│     • File patterns: *auth* → security-auditor   │
+│     • Branch regex: feature/* → code-reviewer    │
+│     • LLM tags: security-concern → auditor       │
+│     • LLM tags: commit-review → code-reviewer    │
 │                                                  │
-│  6. LLM Fallback (if no matches)                 │
-│     • Direct agent classification                │
+│  5. Return Results                               │
+│     • Empty result is valid (no rules matched)   │
 └──────────────────────────────────────────────────┘
        ↓
 Routing Result
