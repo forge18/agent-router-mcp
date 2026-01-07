@@ -1,10 +1,10 @@
 # Agent Router MCP
 
-![Alpha](https://img.shields.io/badge/status-beta-yellow)
+![Beta](https://img.shields.io/badge/status-beta-yellow)
 ![Build Status](https://github.com/forge18/agent-router-mcp/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-> ⚠️ **Alpha Software** - This project is in active development. It is not advised to use the MCP server for more than basic testing at this time.
+> **Beta Software** - This project is functional and tested. Feedback and bug reports are welcome.
 
 A **stateless, config-driven** Model Context Protocol (MCP) server that intelligently routes requests to specialized AI subagents using a hybrid rule-based + LLM approach.
 
@@ -120,7 +120,8 @@ Add to your MCP client's configuration file (location varies by client - check y
       "command": "C:\\path\\to\\agent-router-mcp.exe",
       "env": {
         "OLLAMA_URL": "http://localhost:11434",
-        "MODEL_NAME": "smollm3:3b",
+        "MODEL_SOURCE": "huggingface",
+        "MODEL_NAME": "unsloth/SmolLM3-3B-128K-GGUF",
         "AGENTS_CONFIG_PATH": "C:\\agent-configs\\agents.json",
         "LLM_TAGS_CONFIG_PATH": "C:\\agent-configs\\llm-tags.json",
         "RULES_CONFIG_PATH": "C:\\agent-configs\\rules.json"
@@ -139,7 +140,8 @@ Add to your MCP client's configuration file (location varies by client - check y
       "command": "/path/to/agent-router-mcp",
       "env": {
         "OLLAMA_URL": "http://localhost:11434",
-        "MODEL_NAME": "smollm3:3b",
+        "MODEL_SOURCE": "huggingface",
+        "MODEL_NAME": "unsloth/SmolLM3-3B-128K-GGUF",
         "AGENTS_CONFIG_PATH": "/Users/me/agent-configs/agents.json",
         "LLM_TAGS_CONFIG_PATH": "/Users/me/agent-configs/llm-tags.json",
         "RULES_CONFIG_PATH": "/Users/me/agent-configs/rules.json"
@@ -155,118 +157,134 @@ Replace the paths with your actual file locations.
 
 ## MCP Tools Reference
 
-The server exposes 4 tools for managing Ollama and getting routing instructions:
+The server exposes 2 tools for managing Ollama and getting routing instructions:
 
-### `get_routing`
+### `init_llm`
+
+Initialize the LLM environment. This tool:
+1. Checks if Ollama is installed
+2. Starts Ollama if not running
+3. Pulls the configured model if not downloaded
+4. Loads the model into memory
+
+Call this once before using `get_instructions`.
+
+**Input:** None required
+
+**Output (Success):**
+```json
+{
+  "success": true,
+  "message": "LLM ready for routing",
+  "steps_performed": [
+    "Ollama already running",
+    "Model unsloth/SmolLM3-3B-128K-GGUF already installed",
+    "Model unsloth/SmolLM3-3B-128K-GGUF already loaded"
+  ]
+}
+```
+
+### `get_instructions`
 
 Get routing instructions for a user request. **This is the main tool** that performs intelligent routing.
 
 **Input:**
 ```json
 {
-  "user_prompt": "Fix the authentication bug",
-  "trigger": "user_request",
-  "git_context": {
-    "branch": "main",
-    "changed_files": ["src/auth.ts"],
-    "staged_files": []
-  },
-  "agent_config_path": null,
-  "rules_config_path": null,
-  "llm_tags_path": null
+  "task": "Fix the authentication bug",
+  "intent": "review code before commit",
+  "original_prompt": "Can you fix the login issue in auth.ts?",
+  "associated_files": ["src/auth.ts", "src/middleware/auth.ts"]
 }
 ```
+
+- `task` (required): What the agent is doing - the current task or action being performed
+- `intent` (required): The agent's intent for this tool call (e.g., "review code before commit", "help debug an issue", "prepare for pull request")
+- `original_prompt` (optional): The original user request, preserved for better LLM semantic tagging. Useful when `task` is a summary or derivative of the original request.
+- `associated_files` (optional): List of file paths relevant to this task, used for file-based routing rules. If not provided, no file-based rules will match.
+
+Note: Git context (branch only) is **auto-detected** from the current working directory for branch-based routing rules.
 
 **Output (Success):**
 ```json
 {
-  "agents": [
+  "instructions": [
     {
-      "name": "security-auditor",
-      "reason": "Matched file pattern or trigger"
+      "trigger": {
+        "name": "file_pattern",
+        "description": "*auth*"
+      },
+      "context": {
+        "instructions": "Review authentication code for security vulnerabilities",
+        "files": ["src/auth.ts", "src/middleware/auth.ts"],
+        "confidence": 100,
+        "priority": 80
+      },
+      "route_to_agent": {
+        "name": "security-auditor",
+        "description": "Reviews code for security vulnerabilities, secrets, supply chain attacks"
+      }
     },
     {
-      "name": "language-reviewer-typescript",
-      "reason": "Matched file pattern or trigger"
+      "trigger": {
+        "name": "file_pattern",
+        "description": "*.ts"
+      },
+      "context": {
+        "instructions": null,
+        "files": ["src/auth.ts", "src/middleware/auth.ts"],
+        "confidence": 100,
+        "priority": 50
+      },
+      "route_to_agent": {
+        "name": "language-reviewer-typescript",
+        "description": "TypeScript-specific patterns and best practices"
+      }
     }
-  ],
-  "reasoning": "Clear rule-based matches",
-  "method": "rules",
-  "llm_tags": null
+  ]
 }
 ```
+
+**Response Fields:**
+
+| Field | Description |
+|-------|-------------|
+| `instructions` | Array of routing instructions, one per agent to invoke |
+| `trigger.name` | What triggered the routing: `file_pattern`, `file_regex`, `branch_regex`, `prompt_regex`, `llm_tag` |
+| `trigger.description` | The specific pattern or tag that matched (e.g., `*.ts`, `security-concern`) |
+| `context.instructions` | Optional agent-specific instructions from the agent definition |
+| `context.files` | Files that triggered this routing (subset of input files) |
+| `context.confidence` | 0-100 confidence level (100 = deterministic rule match, 85 = LLM tag match) |
+| `context.priority` | 0-100 priority level from agent definition (higher = more important) |
+| `route_to_agent.name` | Agent name to route to |
+| `route_to_agent.description` | Agent description from config |
 
 **Output (Prerequisites Not Met):**
 
 The tool performs automatic prerequisite checks and returns helpful error messages:
 
 ```json
-{"error": "Ollama is not started. Ask user if Ollama should be started."}
+{"error": "Ollama is not running. Run init_llm first to start Ollama and load the model."}
 ```
 ```json
-{"error": "Model has not been downloaded. Ask user if the model should be pulled."}
-```
-```json
-{"error": "Model is not loaded. Ask the user if the model should be loaded in Ollama."}
+{"error": "Model not loaded into memory. Run init_llm to load it."}
 ```
 
-When you receive these errors, call the appropriate tool (`start_ollama`, `pull_model`, or `load_model`).
-
-### `start_ollama`
-
-Start the Ollama service (useful if it's not already running).
-
-**Output:**
-```json
-{
-  "success": true,
-  "message": "Ollama started successfully"
-}
-```
-
-### `pull_model`
-
-Download a model from the Ollama registry.
-
-**Input:**
-```json
-{
-  "model_name": "smollm3:3b"
-}
-```
-
-**Output:**
-```json
-{
-  "success": true,
-  "message": "Model smollm3:3b pulled successfully"
-}
-```
-
-### `load_model`
-
-Pre-load the configured model into memory for faster first request.
-
-**Output:**
-```json
-{
-  "success": true,
-  "message": "Model smollm3:3b loaded successfully"
-}
-```
+When you receive these errors, call `init_llm` first.
 
 ---
 
 ## How It Works
 
 1. **Stateless**: No state maintained between requests
-2. **Config Loading**: Loads `agents.json`, `rules.json`, `llm-tags.json` fresh each request
-3. **Rule Matching**: Evaluates all rules, returns matched agents
-4. **High Confidence Check**: If clear matches (files + lifecycle), returns immediately
-5. **LLM Tagging**: If ambiguous, calls Ollama to identify semantic tags
-6. **Tag Rules**: Applies tag-based rules to get additional agents
-7. **LLM Fallback**: If still no matches, asks LLM to directly classify
-8. **Return**: JSON result with agent names and routing reasoning
+2. **Config Loading**: Loads `agents.json`, `rules.json`, `llm-tags.json` on startup
+3. **Git Context**: Auto-detects branch, changed files, and staged files from current directory
+4. **Rule Matching**: Evaluates all rules against files and branches
+5. **High Confidence Check**: If clear file matches found, returns immediately
+6. **LLM Tagging**: Analyzes **task, intent, and original_prompt** to identify semantic tags
+7. **Tag Rules**: Applies tag-based rules to get additional agents
+8. **LLM Fallback**: If still no matches, asks LLM to directly classify
+9. **Return**: JSON result with agent names and routing reasoning
 
 ---
 
@@ -276,22 +294,34 @@ All routing logic lives in `config/*.json` - edit these to customize behavior:
 
 ### `config/agents.json`
 
-Define available subagents (name + description only):
+Define available subagents with optional instructions and priority:
 
 ```json
 {
   "agents": [
     {
       "name": "security-auditor",
-      "description": "Reviews code for security vulnerabilities, secrets, supply chain attacks"
+      "description": "Reviews code for security vulnerabilities, secrets, supply chain attacks",
+      "instructions": "Focus on OWASP Top 10 vulnerabilities and secret exposure",
+      "priority": 80
     },
     {
       "name": "language-reviewer-typescript",
-      "description": "TypeScript-specific patterns and best practices"
+      "description": "TypeScript-specific patterns and best practices",
+      "priority": 50
     }
   ]
 }
 ```
+
+**Agent Fields:**
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `name` | Yes | - | Unique agent identifier |
+| `description` | Yes | - | What this agent does (shown in routing response) |
+| `instructions` | No | null | Agent-specific instructions included in routing response |
+| `priority` | No | 50 | 0-100 priority level (higher = more important) |
 
 ### `config/rules.json`
 
@@ -321,9 +351,16 @@ Define routing rules with boolean logic:
       "route_to_subagents": ["security-auditor", "code-reviewer"]
     },
     {
-      "description": "Commit hooks always trigger code review",
+      "description": "Commit intent triggers code review",
       "conditions": {
-        "git_lifecycle": "commit"
+        "llm_tag": "commit-review"
+      },
+      "route_to_subagents": ["code-reviewer"]
+    },
+    {
+      "description": "PR intent triggers code review",
+      "conditions": {
+        "llm_tag": "pull-request"
       },
       "route_to_subagents": ["code-reviewer"]
     }
@@ -334,10 +371,8 @@ Define routing rules with boolean logic:
 **Supported Conditions:**
 - `file_pattern` - Glob match on file paths (e.g., `*.ts`, `*auth*`)
 - `file_regex` - Regex match on file paths
-- `prompt_regex` - Regex match on user prompt (e.g., `(?i)test` for case-insensitive)
 - `branch_regex` - Regex match on git branch name
-- `git_lifecycle` - Match git trigger (`commit`, `pre-commit`, `pull_request`)
-- `llm_tag` - Match LLM-identified semantic tags
+- `llm_tag` - Match LLM-identified semantic tags (LLM analyzes task, intent, and original_prompt)
 
 **Boolean Logic:**
 - `any_of` - OR logic (match if ANY condition is true)
@@ -346,11 +381,29 @@ Define routing rules with boolean logic:
 
 ### `config/llm-tags.json`
 
-Define semantic tags for LLM to identify:
+Define semantic tags for LLM to identify. The LLM analyzes **task, intent, and original_prompt** when identifying tags:
 
 ```json
 {
   "tags": [
+    {
+      "name": "commit-review",
+      "description": "Intent indicates preparing for a commit, pre-commit review, or finalizing changes",
+      "examples": [
+        "review before commit",
+        "pre-commit check",
+        "finalize changes"
+      ]
+    },
+    {
+      "name": "pull-request",
+      "description": "Intent indicates preparing a pull request or code review for merge",
+      "examples": [
+        "create pull request",
+        "prepare PR",
+        "ready for review"
+      ]
+    },
     {
       "name": "security-concern",
       "description": "Code that handles authentication, authorization, encryption, secrets...",
@@ -428,31 +481,85 @@ Edit `config/llm-tags.json`:
 
 ## Model Switching
 
-**Any Ollama-compatible model works** - just set the `MODEL_NAME` environment variable:
+The router supports models from **two sources**:
+
+### Model Sources
+
+| Source | `MODEL_SOURCE` | Model Name Format | Example |
+|--------|---------------|-------------------|---------|
+| **HuggingFace** (default) | `huggingface` | `username/repo-name` | `unsloth/SmolLM3-3B-128K-GGUF` |
+| **Ollama** | `ollama` | `model:tag` | `llama3.2:3b` |
+
+### Using HuggingFace Models (Default)
+
+HuggingFace offers thousands of GGUF models. The router automatically prefixes with `hf.co/` when pulling:
 
 ```bash
+# Default: HuggingFace SmolLM3
+export MODEL_SOURCE="huggingface"
+export MODEL_NAME="unsloth/SmolLM3-3B-128K-GGUF"
+
+# Other HuggingFace models
+export MODEL_NAME="bartowski/Qwen2.5-3B-Instruct-GGUF"
+export MODEL_NAME="TheBloke/Llama-2-7B-GGUF"
+```
+
+Browse HuggingFace GGUF models: https://huggingface.co/models?library=gguf
+
+### Using Ollama Models
+
+For models from Ollama's native library:
+
+```bash
+export MODEL_SOURCE="ollama"
+export MODEL_NAME="llama3.2:3b"
+
 # Try different models
 ollama pull granite4-h-micro:3b
 export MODEL_NAME="granite4-h-micro:3b"
-
-ollama pull llama3.2:3b
-export MODEL_NAME="llama3.2:3b"
 
 ollama pull qwen2.5:3b
 export MODEL_NAME="qwen2.5:3b"
 ```
 
-**Popular options:**
+**Popular Ollama models:**
 
 | Model | Size | Best For |
 |-------|------|----------|
-| `smollm3:3b` | 3B | Balanced, fast (default) |
+| `smollm3:3b` | 3B | Balanced, fast |
 | `granite4-h-micro:3b` | 3B | Instruction following |
 | `llama3.2:3b` | 3B | General purpose |
 | `qwen2.5:3b` | 3B | Code understanding |
 | `phi3:3.8b` | 3.8B | Reasoning |
 
-Browse all models: https://ollama.com/library
+Browse Ollama models: https://ollama.com/library
+
+### LM Studio Support (Coming Soon)
+
+LM Studio backend support is planned, allowing LM Studio as an alternative to Ollama.
+
+### Advanced LLM Configuration
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `THINKING_MODE` | `true` | Enable thinking/reasoning mode for supported models |
+| `TEMPERATURE` | `0.1` | LLM temperature (0.0-1.0). Lower = more deterministic |
+
+**Thinking Mode**: When enabled and the model supports it, the LLM will reason through its decisions before answering. This can improve classification accuracy for ambiguous requests.
+
+Supported thinking models:
+- `deepseek-r1` - DeepSeek's reasoning model
+- `qwen3`, `qwen2.5` - Alibaba's multilingual models
+- `cogito` - Specialized thinking model
+- `qwq` - QwQ reasoning model
+
+```bash
+# Disable thinking mode (if model doesn't support it well)
+export THINKING_MODE=false
+
+# Use lower temperature for more deterministic results
+export TEMPERATURE=0.05
+```
 
 ---
 
@@ -463,38 +570,44 @@ This MCP is a **pure router** - it doesn't execute agents, it just determines wh
 ### Flow Diagram
 
 ```
-User Request
-  ├─ Prompt: "Fix auth bug"
-  ├─ Files: src/auth.ts, src/db/users.ts
-  └─ Trigger: user_request
+Agent Call
+  ├─ Task: "Fix auth bug"
+  ├─ Intent: "review code before commit"
+  ├─ Original Prompt: "Can you fix the login issue?" (optional)
+  └─ Files: src/auth.ts (auto-detected from git)
        ↓
 ┌──────────────────────────────────────────────────┐
-│  Agent Router MCP (Stateless Router)         │
+│  Agent Router MCP (Stateless Router)             │
 │                                                  │
 │  1. Load Configs                                 │
 │     • agents.json (agent definitions)            │
 │     • rules.json (routing rules)                 │
 │     • llm-tags.json (semantic tags)              │
 │                                                  │
-│  2. Apply Rule-Based Matching                    │
+│  2. Auto-Detect Git Context                      │
+│     • Branch, changed files, staged files        │
+│                                                  │
+│  3. Apply Rule-Based Matching                    │
 │     • *.ts → language-reviewer-typescript        │
 │     • *auth* → security-auditor                  │
 │                                                  │
-│  3. LLM Semantic Tagging (if needed)             │
-│     • Ollama analyzes code                       │
-│     • Returns: ["security-concern"]              │
+│  4. LLM Semantic Tagging (if needed)             │
+│     • Analyzes task + intent + original_prompt   │
+│     • Returns: ["security-concern",              │
+│                 "commit-review"]                 │
 │                                                  │
-│  4. Apply Tag-Based Rules                        │
+│  5. Apply Tag-Based Rules                        │
 │     • security-concern → security-auditor        │
+│     • commit-review → code-reviewer              │
 │                                                  │
-│  5. LLM Fallback (if no matches)                 │
+│  6. LLM Fallback (if no matches)                 │
 │     • Direct agent classification                │
 └──────────────────────────────────────────────────┘
        ↓
 Routing Result
-  ├─ Agents: [language-reviewer-typescript, security-auditor]
-  ├─ Method: "rules"
-  └─ Reasoning: "Clear rule-based matches"
+  ├─ Agents: [language-reviewer-typescript, security-auditor, code-reviewer]
+  ├─ Method: "rules+llm-tags"
+  └─ Reasoning: "Rules + LLM semantic tags"
 ```
 
 **Example Agent Names (included in default config):**
@@ -623,17 +736,6 @@ cargo clippy
 # Build for development
 cargo build
 ```
-
-## How It Works
-
-1. **Stateless**: No state maintained between requests
-2. **Config Loading**: Loads `agents.json`, `rules.json`, `llm-tags.json` fresh each request
-3. **Rule Matching**: Evaluates all rules, returns matched agents
-4. **High Confidence Check**: If clear matches (files + lifecycle), returns immediately
-5. **LLM Tagging**: If ambiguous, calls Ollama to identify semantic tags
-6. **Tag Rules**: Applies tag-based rules to get additional agents
-7. **LLM Fallback**: If still no matches, asks LLM to directly classify
-8. **Return**: JSON result with agent names and routing reasoning
 
 ## License
 
